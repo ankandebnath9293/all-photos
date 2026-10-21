@@ -64,7 +64,12 @@ object Video {
             r.setDataSource(ctx, uri)
             for (i in 0 until count) {
                 val t = durationMs * (i + 0.5) / count
-                val f = r.getScaledFrameAtTime((t * 1000).toLong(), MediaMetadataRetriever.OPTION_CLOSEST_SYNC, height * 2, height)
+                val us = (t * 1000).toLong()
+                val f = runCatching { r.getScaledFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, height * 2, height) }.getOrNull()
+                    ?: runCatching { r.getFrameAtTime(us, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) }.getOrNull()?.let { full ->
+                        val s = height.toFloat() / full.height.coerceAtLeast(1)
+                        Bitmap.createScaledBitmap(full, (full.width * s).toInt().coerceAtLeast(1), height, true).also { if (it !== full) full.recycle() }
+                    }
                 if (f != null) out += f
             }
         } catch (t: Throwable) {

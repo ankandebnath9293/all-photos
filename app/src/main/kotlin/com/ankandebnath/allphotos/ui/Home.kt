@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -95,6 +97,12 @@ fun Home(app: AppState) {
             }
         }
 
+        // Keeps scrolled content from showing through the clock and icons.
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(statusTop())
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.94f)),
+        )
+
         NavigationBar(modifier = Modifier.align(Alignment.BottomCenter), containerColor = MaterialTheme.colorScheme.surfaceContainer) {
             tabs.forEachIndexed { i, tab ->
                 NavigationBarItem(
@@ -127,6 +135,10 @@ fun Home(app: AppState) {
             if (d != null) {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     DestPage(d, lib, app, actions, navBottom)
+                    Box(
+                        Modifier.align(Alignment.TopCenter).fillMaxWidth().height(statusTop())
+                            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.94f)),
+                    )
                 }
             }
         }

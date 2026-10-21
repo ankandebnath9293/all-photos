@@ -27,9 +27,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +41,28 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import com.ankandebnath.allphotos.capture.Apps
 import com.ankandebnath.allphotos.data.Db
 import com.ankandebnath.allphotos.data.Media
@@ -57,7 +77,6 @@ import com.ankandebnath.allphotos.media.DetailsReader
 @Composable
 fun DetailsSheet(m: Media, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var more by rememberSaveable(m.id) { mutableStateOf(false) }
     val details by produceState<Details?>(null, m.id, m.modified) {
         val src = Db.get(ctx).sources.value[m.id]
@@ -65,7 +84,7 @@ fun DetailsSheet(m: Media, onDismiss: () -> Unit) {
         value = DetailsReader.read(ctx.applicationContext, m, src, label)
     }
     val c = MaterialTheme.colorScheme
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = c.surfaceContainerLow) {
+    Sheet(onDismiss) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding().padding(bottom = 16.dp),
         ) {
@@ -113,6 +132,64 @@ fun DetailsSheet(m: Media, onDismiss: () -> Unit) {
                     Gap(8.dp)
                     Text("Hold any value to copy it.", style = MaterialTheme.typography.labelSmall, color = c.onSurfaceVariant)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A bottom sheet drawn inside the screen it belongs to: slides up over a dimmed backdrop, closes
+ * with a tap outside, the back gesture, or a drag down on the handle.
+ */
+@Composable
+fun Sheet(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    var shown by remember { mutableStateOf(false) }
+    var drag by remember { mutableFloatStateOf(0f) }
+    val scope = rememberCoroutineScope()
+    val close: () -> Unit = {
+        shown = false
+        scope.launch {
+            delay(220)
+            onDismiss()
+        }
+    }
+    LaunchedEffect(Unit) { shown = true }
+    BackHandler { close() }
+    val dim by animateFloatAsState(if (shown) 0.45f else 0f, tween(220), label = "dim")
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim))
+                .pointerInput(Unit) { detectTapGestures { close() } },
+        )
+        AnimatedVisibility(
+            shown,
+            enter = slideInVertically(tween(260)) { it },
+            exit = slideOutVertically(tween(220)) { it },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().fillMaxHeight(0.86f).wrapContentHeight(Alignment.Bottom)
+                    .offset { IntOffset(0, drag.roundToInt().coerceAtLeast(0)) }
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .background(c.surfaceContainerLow)
+                    .pointerInput(Unit) { detectTapGestures { } },
+            ) {
+                Box(
+                    Modifier.fillMaxWidth().padding(vertical = 12.dp).pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = { if (drag > 160f) close() else drag = 0f },
+                            onDragCancel = { drag = 0f },
+                        ) { ch, dy ->
+                            ch.consume()
+                            drag = (drag + dy).coerceAtLeast(0f)
+                        }
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(width = 36.dp, height = 4.dp).clip(RoundedCornerShape(50)).background(c.onSurfaceVariant.copy(alpha = 0.4f)))
+                }
+                content()
             }
         }
     }

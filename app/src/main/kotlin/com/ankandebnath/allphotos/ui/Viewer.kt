@@ -179,7 +179,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
         ) { page ->
             val m = items[page]
             val isCurrent = page == pager.currentPage && !pager.isScrollInProgress
-            val placeholder: @Composable () -> Unit = { Thumb(m, 640, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+            val placeholder: @Composable () -> Unit = { Thumb(m, 640, Modifier.fillMaxSize(), contentScale = ContentScale.Fit, bg = Color.Transparent) }
             if (m.isVideo) {
                 VideoSurface(player, current = isCurrent && player.uri == m.uri, placeholder = placeholder, onTap = { chrome = !chrome })
             } else {

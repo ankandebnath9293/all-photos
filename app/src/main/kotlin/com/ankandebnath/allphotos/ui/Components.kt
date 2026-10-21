@@ -93,7 +93,7 @@ fun IconBadge(icon: ImageVector, shape: Shape, container: Color, content: Color,
 
 /** A photo or video thumbnail that loads in the background and fades in. */
 @Composable
-fun Thumb(m: Media, px: Int, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
+fun Thumb(m: Media, px: Int, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop, bg: Color = MaterialTheme.colorScheme.surfaceContainerHigh) {
     val ctx = LocalContext.current
     val size = Thumbs.bucket(px)
     var img by remember(m.id, m.modified, size) { mutableStateOf(Thumbs.cached(m, size)) }
@@ -105,7 +105,7 @@ fun Thumb(m: Media, px: Int, modifier: Modifier = Modifier, contentScale: Conten
         }
     }
     val alpha by animateFloatAsState(if (img != null) 1f else 0f, tween(180), label = "thumb")
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+    Box(modifier.background(bg)) {
         img?.let {
             Image(it, null, Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }, contentScale = contentScale)
         }
