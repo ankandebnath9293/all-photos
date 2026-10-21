@@ -23,9 +23,15 @@ data class Settings(
     val chatDays: Int = 30,
     val indexOnlyCharging: Boolean = true,
     val pinnedAlbums: Set<Long> = emptySet(),
+    val facebookRule: Boolean = false,
+    /** Group bursts of near-identical photos into one stack in the grid. */
+    val stackSimilar: Boolean = false,
+    val showDates: Boolean = true,
+    /** 0 minimal, 1 standard, 2 rich. */
+    val motion: Int = 1,
 )
 
-class Prefs private constructor(ctx: Context) {
+class Prefs private constructor(private val ctx: Context) {
     private val sp: SharedPreferences = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
     private val state = MutableStateFlow(read())
     val settings: StateFlow<Settings> = state.asStateFlow()
@@ -45,6 +51,10 @@ class Prefs private constructor(ctx: Context) {
         chatDays = sp.getInt("chatDays", 30),
         indexOnlyCharging = sp.getBoolean("indexOnlyCharging", true),
         pinnedAlbums = sp.getStringSet("pinnedAlbums", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet(),
+        facebookRule = sp.getBoolean("facebookRule", false),
+        stackSimilar = sp.getBoolean("stackSimilar", false),
+        showDates = sp.getBoolean("showDates", true),
+        motion = sp.getInt("motion", 1).coerceIn(0, 2),
     )
 
     @Synchronized
@@ -64,9 +74,39 @@ class Prefs private constructor(ctx: Context) {
             putInt("chatDays", s.chatDays)
             putBoolean("indexOnlyCharging", s.indexOnlyCharging)
             putStringSet("pinnedAlbums", s.pinnedAlbums.map { it.toString() }.toSet())
+            putBoolean("facebookRule", s.facebookRule)
+            putBoolean("stackSimilar", s.stackSimilar)
+            putBoolean("showDates", s.showDates)
+            putInt("motion", s.motion)
         }
         state.value = s
     }
+
+    /**
+     * The clean-up rules only count files from this moment: the start of the day the app was first
+     * installed. Older screenshots and chat files are never moved to the trash automatically.
+     */
+    var rulesStart: Long
+        set(v) = sp.edit { putLong("rulesStart", v) }
+        get() {
+            val saved = sp.getLong("rulesStart", 0)
+            if (saved > 0) return saved
+            val installed = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).firstInstallTime }
+                .getOrDefault(System.currentTimeMillis())
+            val start = com.ankandebnath.allphotos.logic.Rules.startOfDay(installed)
+            sp.edit { putLong("rulesStart", start) }
+            return start
+        }
+
+    /** Set once the files that version 1.0 moved to the trash too early have been put back. */
+    var restoredEarlyTrash: Boolean
+        get() = sp.getBoolean("restoredEarlyTrash", false)
+        set(v) = sp.edit { putBoolean("restoredEarlyTrash", v) }
+
+    /** How many early-trashed files were put back, so the app can say so once. 0 once shown. */
+    var restoredCount: Int
+        get() = sp.getInt("restoredCount", 0)
+        set(v) = sp.edit { putInt("restoredCount", v) }
 
     /** Small bits of state that are not settings. */
     var seenVersion: Int

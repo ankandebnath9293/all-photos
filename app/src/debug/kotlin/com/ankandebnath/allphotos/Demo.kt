@@ -27,6 +27,8 @@ object Demo {
         if (i.hasExtra("theme")) prefs.update { it.copy(themeMode = i.getIntExtra("theme", 0)) }
         if (i.hasExtra("dynamic")) prefs.update { it.copy(dynamicColor = i.getBooleanExtra("dynamic", true)) }
         if (i.hasExtra("cols")) prefs.update { it.copy(gridCols = i.getIntExtra("cols", 4)) }
+        if (i.hasExtra("motion")) prefs.update { it.copy(motion = i.getIntExtra("motion", 1)) }
+        if (i.hasExtra("stacks")) prefs.update { it.copy(stackSimilar = i.getBooleanExtra("stacks", false)) }
         if (i.hasExtra("seen")) prefs.seenVersion = i.getIntExtra("seen", 0)
         app.tab = i.getIntExtra("tab", 0)
         when (i.getStringExtra("open")) {

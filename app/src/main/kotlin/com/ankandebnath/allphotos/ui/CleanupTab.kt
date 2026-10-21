@@ -71,14 +71,16 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
     val s by prefs.settings.collectAsState()
     val important by remember { Db.get(ctx).important }.collectAsState()
     val tick by MediaRepo.trashTick.collectAsState()
-    val plan = remember(lib, s, important) { Cleaner.plan(lib, s, important) }
-    val soon = remember(lib, s, important) { Cleaner.upcoming(lib, s, important, 7) }
+    val start = remember { prefs.rulesStart }
+    val plan = remember(lib, s, important) { Cleaner.plan(lib, s, important, start) }
+    val soon = remember(lib, s, important) { Cleaner.upcoming(lib, s, important, start, 7) }
     val trash by produceState(emptyList<com.ankandebnath.allphotos.data.Media>(), tick) { value = MediaRepo.trashed(ctx) }
     val similar by produceState<SimilarData.Summary?>(null, lib) { value = SimilarData.compute(ctx.applicationContext, lib) }
     val c = MaterialTheme.colorScheme
     val big = remember(lib) { lib.items.filter { it.size >= 100L * 1024 * 1024 } }
     val wa = remember(lib) { lib.items.filter { it.chat == Chat.WHATSAPP } }
     val tg = remember(lib) { lib.items.filter { it.chat == Chat.TELEGRAM } }
+    val fb = remember(lib) { lib.items.filter { it.chat == Chat.FACEBOOK } }
 
     LazyColumn(
         state = state,
@@ -92,7 +94,7 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
                 trailing = { SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) } },
             )
         }
-        item { StorageCard(lib, wa.sumOf { it.size }, tg.sumOf { it.size }) }
+        item { StorageCard(lib, wa.sumOf { it.size }, tg.sumOf { it.size }, fb.sumOf { it.size }) }
 
         item { SectionTitle("Free up space") }
         item {
@@ -134,19 +136,21 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
                 s.shotAutoTrash,
             ) { on -> prefs.update { it.copy(shotAutoTrash = on) } }
         }
+        item { SectionTitle("Chat apps") }
         item {
-            RuleCard(
-                Icons.Rounded.Forum, "WhatsApp photos and videos",
-                if (!s.whatsappRule) "Off · ${wa.size} files, ${Fmt.size(wa.sumOf { it.size })}" else "After ${s.chatDays} days · ${wa.size} files now",
-                s.whatsappRule,
-            ) { on -> prefs.update { it.copy(whatsappRule = on) } }
+            ChatCard(Chat.WHATSAPP, "com.whatsapp", wa, s.whatsappRule, s.chatDays, start, onOpen = { app.open(Dest.Group(SetKind.WHATSAPP, "WhatsApp")) }) { on ->
+                prefs.update { it.copy(whatsappRule = on) }
+            }
         }
         item {
-            RuleCard(
-                Icons.AutoMirrored.Rounded.Send, "Telegram photos and videos",
-                if (!s.telegramRule) "Off · ${tg.size} files, ${Fmt.size(tg.sumOf { it.size })}" else "After ${s.chatDays} days · ${tg.size} files now",
-                s.telegramRule,
-            ) { on -> prefs.update { it.copy(telegramRule = on) } }
+            ChatCard(Chat.TELEGRAM, "org.telegram.messenger", tg, s.telegramRule, s.chatDays, start, onOpen = { app.open(Dest.Group(SetKind.TELEGRAM, "Telegram")) }) { on ->
+                prefs.update { it.copy(telegramRule = on) }
+            }
+        }
+        item {
+            ChatCard(Chat.FACEBOOK, "com.facebook.orca", fb, s.facebookRule, s.chatDays, start, onOpen = { app.open(Dest.Group(SetKind.FACEBOOK, "Facebook & Messenger")) }) { on ->
+                prefs.update { it.copy(facebookRule = on) }
+            }
         }
         item {
             val due = plan.all
@@ -165,7 +169,7 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
                 }
                 Gap(6.dp)
                 Text(
-                    "Files marked important are never touched. Everything goes to the trash first and can be restored for 30 days.",
+                    "Only files from after ${startText(start)} count. Files marked important are never touched. Everything goes to the trash first and can be restored for 30 days.",
                     style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
                 )
             }
@@ -174,22 +178,55 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
 }
 
 private val runFmt = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.US)
+private val dayFmt = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.US)
+
+fun startText(ms: Long): String = dayFmt.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
+
+/** One chat app: how much it holds, its clean-up switch, and a tap to look through its files. */
+@Composable
+private fun ChatCard(chat: Chat, pkg: String, items: List<com.ankandebnath.allphotos.data.Media>, on: Boolean, days: Int, start: Long, onOpen: () -> Unit, onChange: (Boolean) -> Unit) {
+    val ctx = LocalContext.current
+    val c = MaterialTheme.colorScheme
+    val icon by produceState(com.ankandebnath.allphotos.capture.Apps.icon(ctx, null), pkg) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.ankandebnath.allphotos.capture.Apps.icon(ctx, pkg) }
+    }
+    val counted = remember(items, start) { items.count { it.added >= start } }
+    Panel(onClick = onOpen) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val img = icon
+            if (img != null) AppIcon(img, 44.dp)
+            else IconBadge(Icons.Rounded.Forum, CircleShape, c.secondaryContainer, c.onSecondaryContainer, 44.dp)
+            GapW(14.dp)
+            Column(Modifier.weight(1f)) {
+                Text(chat.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${items.size} files · ${Fmt.size(items.sumOf { it.size })}" +
+                        if (on) " · trashed after $days days" + (if (counted < items.size) " (${counted} new)" else "") else " · auto clean-up off",
+                    style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+                )
+            }
+            GapW(8.dp)
+            Switch(checked = on, onCheckedChange = onChange)
+        }
+    }
+}
 
 private fun lastRunText(at: Long): String =
     if (at <= 0) "Runs by itself twice a day" else "Runs by itself twice a day · last ran ${runFmt.format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))}"
 
 @Composable
-private fun StorageCard(lib: Library, waBytes: Long, tgBytes: Long) {
+private fun StorageCard(lib: Library, waBytes: Long, tgBytes: Long, fbBytes: Long) {
     val c = MaterialTheme.colorScheme
     val shots = lib.screenshots.sumOf { it.size }
     val videos = lib.items.filter { it.isVideo && it.chat == null }.sumOf { it.size }
-    val photos = (lib.totalBytes - shots - videos - waBytes - tgBytes).coerceAtLeast(0)
+    val photos = (lib.totalBytes - shots - videos - waBytes - tgBytes - fbBytes).coerceAtLeast(0)
     val slices = listOf(
         Slice("Photos", photos, c.primary),
         Slice("Videos", videos, c.tertiary),
         Slice("Screenshots", shots, c.secondary),
         Slice("WhatsApp", waBytes, Color(0xFF25A35A)),
         Slice("Telegram", tgBytes, Color(0xFF2AA3E0)),
+        Slice("Facebook", fbBytes, Color(0xFF7B61FF)),
     ).filter { it.bytes > 0 }
     val total = slices.sumOf { it.bytes }.coerceAtLeast(1)
     Panel {

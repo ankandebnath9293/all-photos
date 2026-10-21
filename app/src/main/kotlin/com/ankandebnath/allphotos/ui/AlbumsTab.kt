@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +59,7 @@ import com.ankandebnath.allphotos.data.Media
 import com.ankandebnath.allphotos.data.MediaRepo
 import com.ankandebnath.allphotos.data.Prefs
 import com.ankandebnath.allphotos.logic.Chat
+import com.ankandebnath.allphotos.logic.DocKind
 import com.ankandebnath.allphotos.logic.Fmt
 import com.ankandebnath.allphotos.logic.Links
 
@@ -69,6 +71,15 @@ fun AlbumsTab(lib: Library, app: AppState, state: LazyGridState, bottom: Dp) {
     val prefs = remember { Prefs.get(ctx) }
     val s by prefs.settings.collectAsState()
     val albums = remember(lib, s.pinnedAlbums) { MediaRepo.albums(lib, s.pinnedAlbums) }
+    val docs by produceState(emptyList<Pair<DocKind, List<Media>>>(), lib) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val map = Db.get(ctx).docs()
+            DocKind.entries.mapNotNull { k ->
+                val list = lib.items.filter { map[it.id] == k.ordinal }
+                if (list.isEmpty()) null else k to list
+            }
+        }
+    }
     val c = MaterialTheme.colorScheme
     val shortcuts = listOf(
         Shortcut(Icons.Rounded.VideoLibrary, "Videos", Dest.Group(SetKind.VIDEOS, "Videos")) { c.primaryContainer to c.onPrimaryContainer },
@@ -107,6 +118,19 @@ fun AlbumsTab(lib: Library, app: AppState, state: LazyGridState, bottom: Dp) {
                     }
                 }
             }
+        }
+        if (docs.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Documents") }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(vertical = 6.dp),
+                ) {
+                    docs.forEach { (kind, list) ->
+                        DocRow(kind, list) { app.open(Dest.Group(SetKind.DOCS, kind.label, kind.ordinal.toString())) }
+                    }
+                }
+            }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Folders") }
         }
         items(albums, key = { it.id }) { a ->
             AlbumCard(
@@ -152,6 +176,23 @@ private fun AlbumCard(a: Album, pinned: Boolean, onOpen: () -> Unit, onPin: (Boo
     }
 }
 
+/** One kind of document: its newest photo, its name and how many there are. */
+@Composable
+private fun DocRow(kind: DocKind, list: List<Media>, onClick: () -> Unit) {
+    val px = with(LocalDensity.current) { 64.dp.roundToPx() }
+    Row(
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(60.dp).clip(RoundedCornerShape(16.dp))) { Thumb(list.first(), px, Modifier.fillMaxSize()) }
+        GapW(16.dp)
+        Column(Modifier.weight(1f)) {
+            Text(kind.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("${list.size} photo${if (list.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 /** Items of one ready-made collection. */
 fun groupItems(ctx: android.content.Context, lib: Library, kind: SetKind, key: String): List<Media> {
     val db = Db.get(ctx)
@@ -173,6 +214,12 @@ fun groupItems(ctx: android.content.Context, lib: Library, kind: SetKind, key: S
         }
         SetKind.WHATSAPP -> lib.items.filter { it.chat == Chat.WHATSAPP }
         SetKind.TELEGRAM -> lib.items.filter { it.chat == Chat.TELEGRAM }
+        SetKind.FACEBOOK -> lib.items.filter { it.chat == Chat.FACEBOOK }
+        SetKind.DOCS -> {
+            val k = key.toIntOrNull() ?: -1
+            val docs = db.docs()
+            lib.items.filter { docs[it.id] == k }
+        }
         SetKind.RECENT -> lib.items.sortedByDescending { it.added }.take(300)
     }
 }

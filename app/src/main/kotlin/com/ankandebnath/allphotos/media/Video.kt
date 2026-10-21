@@ -89,7 +89,11 @@ object Video {
      * Cuts [startMs]..[endMs] out of a video into a new MP4 file. Where the cut points allow, the
      * video is copied without re-encoding so quality is untouched.
      */
-    suspend fun trim(ctx: Context, uri: Uri, startMs: Long, endMs: Long, onProgress: (Float) -> Unit = {}): TrimResult {
+    suspend fun trim(
+        ctx: Context, uri: Uri, startMs: Long, endMs: Long,
+        effects: List<androidx.media3.common.Effect> = emptyList(),
+        onProgress: (Float) -> Unit = {},
+    ): TrimResult {
         val out = Saver.tempFile(ctx, "mp4")
         val main = Handler(Looper.getMainLooper())
         return suspendCancellableCoroutine { cont ->
@@ -104,7 +108,8 @@ object Video {
                     )
                     .build()
                 val transformer = Transformer.Builder(ctx)
-                    .experimentalSetTrimOptimizationEnabled(true)
+                    // Copying without re-encoding is only possible when no filter is applied.
+                    .experimentalSetTrimOptimizationEnabled(effects.isEmpty())
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             if (cont.isActive) cont.resume(TrimResult.Done(out))
@@ -118,7 +123,10 @@ object Video {
                     })
                     .build()
                 try {
-                    transformer.start(EditedMediaItem.Builder(item).build(), out.absolutePath)
+                    val edited = EditedMediaItem.Builder(item)
+                        .apply { if (effects.isNotEmpty()) setEffects(androidx.media3.transformer.Effects(emptyList(), effects)) }
+                        .build()
+                    transformer.start(edited, out.absolutePath)
                 } catch (t: Throwable) {
                     Log.w(TAG, "Trim could not start", t)
                     if (cont.isActive) cont.resume(TrimResult.Failed(t.message ?: "error"))

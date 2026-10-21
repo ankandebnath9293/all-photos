@@ -1,16 +1,14 @@
 package com.ankandebnath.allphotos.ui
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -30,12 +30,9 @@ import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.Screenshot
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,10 +40,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.ankandebnath.allphotos.data.Library
 import com.ankandebnath.allphotos.data.MediaRepo
+import com.ankandebnath.allphotos.data.Prefs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Remembers each tab's scroll position while you move between tabs. */
@@ -57,19 +63,19 @@ class TabStates(
     val cleanup: androidx.compose.foundation.lazy.LazyListState,
 )
 
-private class Tab(val label: String, val on: androidx.compose.ui.graphics.vector.ImageVector, val off: androidx.compose.ui.graphics.vector.ImageVector)
-
 private val tabs = listOf(
-    Tab("Photos", Icons.Rounded.Photo, Icons.Outlined.Photo),
-    Tab("Albums", Icons.Rounded.Collections, Icons.Outlined.Collections),
-    Tab("Screenshots", Icons.Rounded.Screenshot, Icons.Outlined.Screenshot),
-    Tab("Cleanup", Icons.Rounded.CleaningServices, Icons.Outlined.CleaningServices),
+    NavTab("Photos", Icons.Rounded.Photo, Icons.Outlined.Photo),
+    NavTab("Albums", Icons.Rounded.Collections, Icons.Outlined.Collections),
+    NavTab("Screenshots", Icons.Rounded.Screenshot, Icons.Outlined.Screenshot),
+    NavTab("Cleanup", Icons.Rounded.CleaningServices, Icons.Outlined.CleaningServices),
 )
 
 @Composable
 fun Home(app: AppState) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val motion = LocalMotion.current
+    val density = LocalDensity.current
     val actions = remember { Actions(ctx.applicationContext, scope, app) }
     val libState by MediaRepo.library.collectAsState()
     val lib = libState ?: Library.EMPTY
@@ -77,16 +83,40 @@ fun Home(app: AppState) {
     val states = TabStates(rememberLazyGridState(), rememberLazyGridState(), rememberLazyGridState(), rememberLazyListState())
     val holder = rememberSaveableStateHolder()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottom = 80.dp + navBottom
+    // The floating bar's height plus its margin; tabs scroll underneath it.
+    val bottom = 84.dp + navBottom
+    val bg = MaterialTheme.colorScheme.background
+    val back = remember { Animatable(0f) }
+    var swipeEdge = remember { floatArrayOf(0f) }
 
-    BackHandler(enabled = app.stack.isNotEmpty() || app.tab != 0) { app.back() }
+    // Tell once that the files version 1.0 trashed too early were put back.
+    LaunchedEffect(Unit) {
+        val prefs = Prefs.get(ctx)
+        val n = prefs.restoredCount
+        if (n > 0) {
+            Toasts.show("Put back $n older file${if (n == 1) "" else "s"} from the trash")
+            prefs.restoredCount = 0
+        }
+    }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AnimatedContent(
-            targetState = app.tab,
-            transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
-            label = "tabs",
-        ) { t ->
+    // Back from a page: the page shrinks with the gesture, then closes. From another tab: go to Photos.
+    PredictiveBackHandler(enabled = app.stack.isNotEmpty() || (app.tab != 0 && app.viewer == null)) { progress ->
+        val onPage = app.stack.isNotEmpty()
+        try {
+            progress.collect { e ->
+                swipeEdge[0] = if (e.swipeEdge == 0) 1f else -1f
+                if (onPage && !motion.minimal) back.snapTo(e.progress)
+            }
+            app.back()
+            back.snapTo(0f)
+        } catch (e: CancellationException) {
+            scope.launch { back.animateTo(0f) }
+            throw e
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(bg)) {
+        AnimatedContent(targetState = app.tab, transitionSpec = { motion.tab() }, label = "tabs") { t ->
             holder.SaveableStateProvider("tab$t") {
                 when (t) {
                     0 -> PhotosTab(lib, loading, app, actions, states.photos, bottom)
@@ -97,60 +127,70 @@ fun Home(app: AppState) {
             }
         }
 
-        // Keeps scrolled content from showing through the clock and icons.
+        // Photos run edge to edge; a soft fade keeps the clock readable.
         Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(statusTop())
-                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.94f)),
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(statusTop() + 20.dp)
+                .background(Brush.verticalGradient(listOf(bg.copy(alpha = 0.92f), bg.copy(alpha = 0.6f), bg.copy(alpha = 0f)))),
+        )
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(navBottom + 56.dp)
+                .background(Brush.verticalGradient(listOf(bg.copy(alpha = 0f), bg.copy(alpha = 0.7f)))),
         )
 
-        NavigationBar(modifier = Modifier.align(Alignment.BottomCenter), containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-            tabs.forEachIndexed { i, tab ->
-                NavigationBarItem(
-                    selected = app.tab == i,
-                    onClick = {
-                        if (app.tab == i) {
-                            scope.launchScrollTop(states, i)
-                        }
-                        app.tab = i
-                    },
-                    icon = { Icon(if (app.tab == i) tab.on else tab.off, null) },
-                    label = { Text(tab.label, maxLines = 1) },
-                )
-            }
+        AnimatedVisibility(
+            visible = app.stack.isEmpty(),
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp),
+        ) {
+            FloatingNav(
+                tabs, app.tab,
+                onSelect = { i ->
+                    if (app.tab == i) scope.launchScrollTop(states, i)
+                    app.tab = i
+                },
+                onSearch = { app.open(Dest.Search) },
+            )
         }
 
         // Pages opened on top of the tabs.
         AnimatedContent(
             targetState = app.stack.toList(),
-            transitionSpec = {
-                if (targetState.size > initialState.size) {
-                    (slideInHorizontally(tween(280)) { it / 3 } + fadeIn(tween(200))) togetherWith fadeOut(tween(160))
-                } else {
-                    fadeIn(tween(160)) togetherWith (slideOutHorizontally(tween(240)) { it / 3 } + fadeOut(tween(200)))
-                }
-            },
+            transitionSpec = { if (targetState.size > initialState.size) motion.pageOpen() else motion.pageClose() },
             label = "pages",
         ) { list ->
             val d = list.lastOrNull()
             if (d != null) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                val isTop = list.size == app.stack.size
+                Box(
+                    Modifier.fillMaxSize()
+                        .graphicsLayer {
+                            if (isTop) {
+                                val p = back.value
+                                val s = 1f - 0.1f * p
+                                scaleX = s
+                                scaleY = s
+                                translationX = swipeEdge[0] * p * with(density) { 24.dp.toPx() }
+                                transformOrigin = TransformOrigin(if (swipeEdge[0] > 0) 0.9f else 0.1f, 0.5f)
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape((p * 32).dp)
+                                clip = p > 0f
+                            } else {
+                                shape = RectangleShape
+                            }
+                        }
+                        .background(bg),
+                ) {
                     DestPage(d, lib, app, actions, navBottom)
                     Box(
-                        Modifier.align(Alignment.TopCenter).fillMaxWidth().height(statusTop())
-                            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.94f)),
+                        Modifier.align(Alignment.TopCenter).fillMaxWidth().height(statusTop() + 16.dp)
+                            .background(Brush.verticalGradient(listOf(bg.copy(alpha = 0.92f), bg.copy(alpha = 0f)))),
                     )
                 }
             }
         }
 
-        AnimatedVisibility(
-            visible = app.viewer != null,
-            enter = fadeIn(tween(180)) + scaleIn(tween(220), initialScale = 0.94f),
-            exit = fadeOut(tween(160)) + scaleOut(tween(200), targetScale = 0.96f),
-        ) {
-            val req = app.viewer
-            if (req != null) Viewer(req, lib, app, actions, onClose = { app.viewer = null })
-        }
+        val req = app.viewer
+        if (req != null) Viewer(req, lib, app, actions, onClose = { app.viewer = null })
 
         val ed = app.editor
         AnimatedVisibility(visible = ed != null, enter = fadeIn(tween(180)), exit = fadeOut(tween(160))) {

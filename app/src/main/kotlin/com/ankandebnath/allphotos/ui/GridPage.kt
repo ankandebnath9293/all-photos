@@ -168,12 +168,16 @@ fun GridPage(
     empty: (@Composable () -> Unit)? = null,
     onOpen: ((List<Media>, Int) -> Unit)? = null,
     onPick: ((List<Media>) -> Unit)? = null,
+    stacks: Map<Long, Int> = emptyMap(),
+    /** What the viewer swipes through, when it differs from the grid (stacks open up in the viewer). */
+    viewerItems: List<Media>? = null,
 ) {
     val ctx = LocalContext.current
     val prefs = remember { Prefs.get(ctx) }
     val s by prefs.settings.collectAsState()
     val important by remember { Db.get(ctx).important }.collectAsState()
     var confirmDelete by remember { mutableStateOf(false) }
+    var reveal by remember { mutableStateOf<(suspend (Long) -> Unit)?>(null) }
 
     BackHandler(enabled = selection.active) { selection.clear() }
 
@@ -185,8 +189,11 @@ fun GridPage(
             selection = selection,
             important = important,
             onCols = { n -> prefs.update { it.copy(gridCols = n) } },
-            headers = headers,
+            headers = headers && s.showDates,
             contentPadding = PaddingValues(bottom = bottom + 96.dp),
+            stacks = stacks,
+            topInset = statusTop(),
+            registerReveal = { reveal = it },
             top = {
                 Column {
                     PageHeader(title, sub, onBack, trailing, extra)
@@ -198,7 +205,11 @@ fun GridPage(
                 when {
                     onOpen != null -> onOpen(items, i)
                     mode == SelectMode.PICK -> onPick?.invoke(listOf(items[i]))
-                    else -> app.view(items, i)
+                    else -> {
+                        app.reveal = reveal
+                        val all = viewerItems
+                        if (all != null) app.view(all, all.indexOfFirst { it.id == items[i].id }.coerceAtLeast(0)) else app.view(items, i)
+                    }
                 }
             },
         )

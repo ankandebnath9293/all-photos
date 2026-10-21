@@ -158,6 +158,25 @@ fun SettingsScreen(app: AppState, bottom: Dp, onBack: () -> Unit) {
                 Text("You can also pinch the grid", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
                 Gap(8.dp)
                 Segmented(listOf("2", "3", "4", "5", "6"), s.gridCols - 2) { i -> prefs.update { it.copy(gridCols = i + 2) } }
+                Gap(12.dp)
+                SwitchRow("Stack similar photos", "Group shots of the same moment into one stack in Photos", s.stackSimilar) { on ->
+                    prefs.update { it.copy(stackSimilar = on) }
+                }
+                SwitchRow("Show dates in grid", "Day headings between photos; month headings when zoomed out", s.showDates) { on ->
+                    prefs.update { it.copy(showDates = on) }
+                }
+                Gap(8.dp)
+                Text("Animations", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    when (s.motion) {
+                        0 -> "Quick fades only"
+                        2 -> "More movement and a little bounce"
+                        else -> "Fast and smooth"
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+                )
+                Gap(8.dp)
+                Segmented(listOf("Minimal", "Standard", "Rich"), s.motion) { i -> prefs.update { it.copy(motion = i) } }
             }
         }
 
@@ -196,10 +215,18 @@ fun SettingsScreen(app: AppState, bottom: Dp, onBack: () -> Unit) {
             Panel {
                 SwitchRow("WhatsApp photos and videos", "Received and sent media; stickers are left alone", s.whatsappRule) { on -> prefs.update { it.copy(whatsappRule = on) } }
                 SwitchRow("Telegram photos and videos", null, s.telegramRule) { on -> prefs.update { it.copy(telegramRule = on) } }
+                SwitchRow("Facebook & Messenger photos and videos", "Saved or downloaded from Facebook and Messenger", s.facebookRule) { on ->
+                    prefs.update { it.copy(facebookRule = on) }
+                }
                 Text("Move to trash after", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp, bottom = 8.dp))
                 Segmented(dayOptions.map { "${it}d" }, dayOptions.indexOf(s.chatDays).coerceAtLeast(0)) { i ->
                     prefs.update { it.copy(chatDays = dayOptions[i]) }
                 }
+                Gap(8.dp)
+                Text(
+                    "Only counts files from ${java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.US).format(java.time.Instant.ofEpochMilli(prefs.rulesStart).atZone(java.time.ZoneId.systemDefault()))}, the day All Photos was installed. Older files are never cleaned up automatically.",
+                    style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+                )
                 Gap(8.dp)
                 FilledTonalButton(onClick = { Work.cleanupNow(ctx); Toasts.show("Cleaning up…") }) { Text("Run clean-up now") }
             }

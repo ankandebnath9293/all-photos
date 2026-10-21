@@ -59,8 +59,15 @@ fun PhotosTab(lib: Library, loading: Boolean, app: AppState, actions: Actions, s
         }
         return
     }
+    val ctx = LocalContext.current
+    val s by remember { com.ankandebnath.allphotos.data.Prefs.get(ctx) }.settings.collectAsState()
+    val stacks by produceState(Stacks.NONE, lib, s.stackSimilar) {
+        value = if (s.stackSimilar) Stacks.compute(ctx.applicationContext, lib) else Stacks.NONE
+        HeroBounds.alias = value.alias
+    }
+    val shown = remember(lib, stacks) { if (stacks.hidden.isEmpty()) lib.items else lib.items.filter { it.id !in stacks.hidden } }
     GridPage(
-        items = lib.items,
+        items = shown,
         title = "Photos",
         sub = String.format(Locale.US, "%,d items", lib.items.size),
         app = app,
@@ -68,9 +75,37 @@ fun PhotosTab(lib: Library, loading: Boolean, app: AppState, actions: Actions, s
         bottom = bottom,
         state = state,
         trailing = { SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) } },
-        extra = { FakeSearch("Search text, places, things…") { app.open(Dest.Search) } },
         empty = { NoPhotos("No photos yet") },
+        stacks = stacks.counts,
+        viewerItems = if (stacks.hidden.isEmpty()) null else lib.items,
     )
+}
+
+/** Bursts of near-identical photos shown as one stack in the grid. */
+class Stacks(val hidden: Set<Long>, val counts: Map<Long, Int>, val alias: Map<Long, Long>) {
+    companion object {
+        val NONE = Stacks(emptySet(), emptyMap(), emptyMap())
+
+        /** Only real bursts (shots within a few minutes) are stacked, never copies from different days. */
+        suspend fun compute(ctx: android.content.Context, lib: com.ankandebnath.allphotos.data.Library): Stacks {
+            val sum = com.ankandebnath.allphotos.work.SimilarData.compute(ctx, lib)
+            val hidden = HashSet<Long>()
+            val counts = HashMap<Long, Int>()
+            val alias = HashMap<Long, Long>()
+            for (g in sum.groups) {
+                val times = g.ids.mapNotNull { lib.byId[it]?.taken }
+                if (times.isEmpty() || times.max() - times.min() > 10 * 60_000L) continue
+                // The sharpest shot sits on top of the stack.
+                val top = g.ids.first()
+                counts[top] = g.ids.size
+                for (id in g.ids.drop(1)) {
+                    hidden += id
+                    alias[id] = top
+                }
+            }
+            return Stacks(hidden, counts, alias)
+        }
+    }
 }
 
 /** Looks like a search field; opens the search page. */

@@ -2,7 +2,7 @@
 # Makes the test photos and videos the emulator test copies onto the phone.
 set -eu
 F=fixtures
-rm -rf "$F" && mkdir -p "$F/camera" "$F/shots" "$F/whatsapp" "$F/whatsapp_video" "$F/telegram" "$F/telegram_video" "$F/new_shots" "$F/iphone"
+rm -rf "$F" && mkdir -p "$F/camera" "$F/shots" "$F/whatsapp" "$F/whatsapp_video" "$F/telegram" "$F/telegram_video" "$F/new_shots" "$F/iphone" "$F/messenger"
 
 # A burst: four near-identical shots of the same scene, plus a different photo.
 convert -size 1600x1200 -seed 7 plasma:skyblue-forestgreen -blur 0x2 \
@@ -34,6 +34,12 @@ mk_shot "$F/new_shots/Screenshot_20261021-200005.png" "example.org/new2" "Fresh 
 convert -size 900x1200 -seed 11 plasma:yellow-blue -quality 80 "$F/whatsapp/IMG-20260901-WA0001.jpg"
 convert -size 1200x900 -seed 12 plasma:red-green -quality 80 "$F/whatsapp/IMG-20260902-WA0002.jpg"
 convert -size 800x800 -seed 13 plasma:white-black -quality 80 "$F/telegram/photo_2026-09-01_10-00-00.jpg"
+convert -size 960x720 -seed 14 plasma:orange-teal -quality 80 "$F/messenger/received_1234567890.jpeg"
+# A receipt and a ticket for the Documents section.
+convert -size 900x1400 xc:white -fill black -pointsize 52 \
+  -annotate +60+150 'STAR KABAB' -annotate +60+300 'Chicken Biryani  350.00' -annotate +60+400 'Borhani x2  120.00' \
+  -annotate +60+550 'Sub Total  470.00' -annotate +60+650 'VAT 5%  23.50' -annotate +60+750 'Grand Total  493.50' \
+  -annotate +60+850 'Cash  500.00' -annotate +60+950 'Change  6.50' -quality 92 "$F/camera/PXL_20261017_201500.jpg"
 
 # Videos: a camera MP4 with sound, an iPhone-style MOV, chat videos.
 ffmpeg -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=30 -f lavfi -i sine=frequency=440:sample_rate=48000 \

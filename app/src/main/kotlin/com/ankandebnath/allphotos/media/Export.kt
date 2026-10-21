@@ -9,16 +9,15 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.net.Uri
 import com.ankandebnath.allphotos.data.Media
-import com.ankandebnath.allphotos.logic.Adjust
 import com.ankandebnath.allphotos.logic.CropRect
-import com.ankandebnath.allphotos.logic.EditMath
+import com.ankandebnath.allphotos.logic.Look
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** An edit to apply: quarter turns, mirror, crop, colour. */
-data class Edit(val turns: Int, val flip: Boolean, val crop: CropRect, val adjust: Adjust, val filter: Int) {
-    val isEmpty get() = turns % 4 == 0 && !flip && crop.isFull && adjust.isNeutral && filter == 0
+/** An edit to apply: quarter turns, mirror, crop, and the colour look (filter plus sliders). */
+data class Edit(val turns: Int, val flip: Boolean, val crop: CropRect, val look: Look) {
+    val isEmpty get() = turns % 4 == 0 && !flip && crop.isFull && look.isNeutral
 }
 
 /** Bakes edits into a full-quality photo and saves it. */
@@ -29,7 +28,7 @@ object Export {
         postRotate(90f * (turns % 4))
     }
 
-    fun apply(src: Bitmap, e: Edit): Bitmap {
+    suspend fun apply(src: Bitmap, e: Edit): Bitmap {
         var b = src
         if (e.turns % 4 != 0 || e.flip) {
             val r = Bitmap.createBitmap(b, 0, 0, b.width, b.height, orient(e.turns, e.flip), true)
@@ -45,10 +44,8 @@ object Export {
             if (c !== b && b !== src) b.recycle()
             b = c
         }
-        if (!e.adjust.isNeutral || e.filter != 0) {
-            val out = Bitmap.createBitmap(b.width, b.height, Bitmap.Config.ARGB_8888)
-            val p = Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = ColorMatrixColorFilter(ColorMatrix(EditMath.matrix(e.adjust, e.filter))) }
-            Canvas(out).drawBitmap(b, 0f, 0f, p)
+        if (!e.look.isNeutral) {
+            val out = LookRender.bake(b, e.look)
             if (b !== src) b.recycle()
             b = out
         }

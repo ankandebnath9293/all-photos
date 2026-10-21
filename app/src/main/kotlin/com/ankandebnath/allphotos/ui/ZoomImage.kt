@@ -53,7 +53,8 @@ import kotlin.math.min
 
 /**
  * A photo you can pinch, pan and double-tap to zoom. A screen-sized copy loads first; a sharper
- * one loads once you zoom in. Swipe down (when not zoomed) to close.
+ * one loads once you zoom in. When not zoomed, a vertical drag is handed to the viewer, which
+ * moves the photo with the finger (down to close, up for details).
  */
 @Composable
 fun ZoomImage(
@@ -63,9 +64,11 @@ fun ZoomImage(
     onTap: () -> Unit,
     onZoomed: (Boolean) -> Unit,
     onHdr: (Boolean) -> Unit,
-    onDrag: (Float) -> Unit,
-    onDismiss: () -> Unit,
+    onDragDelta: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
+    resetKey: Int = 0,
 ) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
@@ -75,11 +78,18 @@ fun ZoomImage(
     var scale by remember(uri) { mutableFloatStateOf(1f) }
     var ox by remember(uri) { mutableFloatStateOf(0f) }
     var oy by remember(uri) { mutableFloatStateOf(0f) }
-    var dragY by remember(uri) { mutableFloatStateOf(0f) }
     val tap by rememberUpdatedState(onTap)
     val zoomed by rememberUpdatedState(onZoomed)
-    val drag by rememberUpdatedState(onDrag)
-    val dismiss by rememberUpdatedState(onDismiss)
+    val dragDelta by rememberUpdatedState(onDragDelta)
+    val dragEnd by rememberUpdatedState(onDragEnd)
+    LaunchedEffect(resetKey) {
+        if (resetKey != 0) {
+            scale = 1f
+            ox = 0f
+            oy = 0f
+            zoomed(false)
+        }
+    }
 
     BoxWithConstraints(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val w = constraints.maxWidth.toFloat()
@@ -142,18 +152,22 @@ fun ZoomImage(
             zoomed(ts > 1.01f)
         }
 
-        val gestures = Modifier
+        val gestures = if (!interactive) Modifier else Modifier
             .pointerInput(uri, fitW, fitH) {
                 val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var total = Offset.Zero
-                    var dismissing = false
+                    var dragging = false
                     var pinched = false
                     do {
                         val ev = awaitPointerEvent()
                         val fingers = ev.changes.count { it.pressed }
                         if (fingers >= 2) {
+                            if (dragging) {
+                                dragging = false
+                                dragEnd()
+                            }
                             pinched = true
                             val z = ev.calculateZoom()
                             val pan = ev.calculatePan()
@@ -175,28 +189,17 @@ fun ZoomImage(
                             val ch = ev.changes.firstOrNull() ?: break
                             val d = ch.positionChange()
                             total += d
-                            if (!dismissing && abs(total.y) > slop * 1.5f && abs(total.y) > abs(total.x) * 1.6f && !ch.isConsumed) {
-                                dismissing = true
+                            if (!dragging && abs(total.y) > slop * 1.5f && abs(total.y) > abs(total.x) * 1.4f && !ch.isConsumed) {
+                                dragging = true
+                                dragDelta(total)
+                            } else if (dragging) {
+                                dragDelta(d)
                             }
-                            if (dismissing) {
-                                dragY += d.y
-                                drag((abs(dragY) / (h * 0.4f)).coerceIn(0f, 1f))
-                                ch.consume()
-                            }
+                            if (dragging) ch.consume()
                         }
                     } while (ev.changes.any { it.pressed })
-                    if (dismissing) {
-                        if (abs(dragY) > with(density) { 140.dp.toPx() }) {
-                            dismiss()
-                        } else {
-                            val start = dragY
-                            scope.launch {
-                                animate(start, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { v, _ ->
-                                    dragY = v
-                                    drag((abs(v) / (h * 0.4f)).coerceIn(0f, 1f))
-                                }
-                            }
-                        }
+                    if (dragging) {
+                        dragEnd()
                     } else if (scale < 1f) {
                         animateTo(1f, 0f, 0f)
                     } else if (pinched) {
@@ -224,12 +227,7 @@ fun ZoomImage(
             scaleX = scale
             scaleY = scale
             translationX = ox
-            translationY = oy + dragY
-            val shrink = 1f - (abs(dragY) / (h * 4f)).coerceIn(0f, 0.15f)
-            if (dragY != 0f) {
-                scaleX = scale * shrink
-                scaleY = scale * shrink
-            }
+            translationY = oy
         }
 
         Box(Modifier.fillMaxSize().then(gestures), contentAlignment = Alignment.Center) {

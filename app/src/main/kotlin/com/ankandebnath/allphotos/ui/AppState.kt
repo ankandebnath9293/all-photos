@@ -32,7 +32,7 @@ sealed interface Dest {
 }
 
 /** Ready-made collections. */
-enum class SetKind { VIDEOS, FAVORITES, IMPORTANT, SHOT_APP, SHOT_SITE, WHATSAPP, TELEGRAM, SCREENSHOTS, RECENT }
+enum class SetKind { VIDEOS, FAVORITES, IMPORTANT, SHOT_APP, SHOT_SITE, WHATSAPP, TELEGRAM, FACEBOOK, SCREENSHOTS, RECENT, DOCS }
 
 /** What the full-screen viewer should show: a list of items and where to start. */
 class ViewerReq(val ids: List<Long>, val start: Int, val fromTrash: Boolean = false, val explicit: List<Media> = emptyList())
@@ -47,6 +47,9 @@ class AppState {
     var viewer by mutableStateOf<ViewerReq?>(null)
     var editor by mutableStateOf<EditReq?>(null)
     var details by mutableStateOf<Media?>(null)
+
+    /** Scrolls the grid the viewer was opened from so a photo is on screen (set by that grid). */
+    var reveal: (suspend (Long) -> Unit)? = null
 
     /** Set by the activity: shows the system's confirm dialog when the phone insists on one. */
     var askConsent: (PendingIntent) -> Unit = {}

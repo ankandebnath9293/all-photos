@@ -56,6 +56,21 @@ object Indexer {
         n
     }
 
+    /** Sorts every photo whose text has been read into a document kind (receipt, ticket, notes…). */
+    fun sortDocs(ctx: Context) {
+        val db = Db.get(ctx)
+        val rows = db.unsorted()
+        if (rows.isEmpty()) return
+        val lib = MediaRepo.now.byId
+        val out = HashMap<Long, Int>()
+        for ((id, text, labels) in rows) {
+            val m = lib[id]
+            val kind = com.ankandebnath.allphotos.logic.Docs.classify(text, labels.split(", ").filter { it.isNotBlank() }, m?.isScreenshot == true)
+            out[id] = if (kind == null) 0 else kind.ordinal + 1
+        }
+        db.setDocs(out)
+    }
+
     /** Labels screenshots taken before the watcher was on, using the phone's usage history. */
     private fun attributeOld(ctx: Context) {
         val db = Db.get(ctx)
@@ -119,6 +134,7 @@ object Indexer {
                     n++
                     if (n % 5 == 0) state.value = IndexState(true, "Reading screenshots", n, shots.size)
                 }
+                runCatching { sortDocs(app) }
                 fingerprints(app, if (heavy) Int.MAX_VALUE else 3000, stop)
                 if (stop()) return@withContext false
                 if (heavy) {
@@ -129,7 +145,9 @@ object Indexer {
                         readOne(app, m, labels = true)
                         k++
                         if (k % 5 == 0) state.value = IndexState(true, "Reading photos", k, photos.size)
+                        if (k % 50 == 0) runCatching { sortDocs(app) }
                     }
+                    runCatching { sortDocs(app) }
                 }
                 true
             } finally {

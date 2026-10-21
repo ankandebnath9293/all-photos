@@ -8,6 +8,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoDelete
+import androidx.compose.material.icons.rounded.Animation
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.ImageSearch
 import androidx.compose.material.icons.rounded.TravelExplore
@@ -28,14 +33,16 @@ class Change(val icon: ImageVector, val title: String, val detail: String)
 
 /** What changed in each version. Shown once after an update. */
 object WhatsNew {
-    const val VERSION = 1
-    const val NAME = "1.0"
+    const val VERSION = 2
+    const val NAME = "1.1"
 
     val changes = listOf(
-        Change(Icons.Rounded.TravelExplore, "Screenshots know where they came from", "The app and website are saved with each screenshot, and the Screenshots tab groups them for you."),
-        Change(Icons.Rounded.AutoDelete, "Clean-up that runs by itself", "Old screenshots and WhatsApp or Telegram media go to the trash after 30 days, unless marked important."),
-        Change(Icons.Rounded.ImageSearch, "Search inside photos", "Find a photo by the words in it or what's in it. Everything is read on the phone."),
-        Change(Icons.Rounded.CameraAlt, "Save the exact frame", "Pause a video, step frame by frame and save the frame you need in full quality."),
+        Change(Icons.Rounded.AutoDelete, "Clean-up starts from install day", "Screenshots and chat files from before you installed All Photos are never cleaned up. Older files that were moved to the trash are back."),
+        Change(Icons.Rounded.Animation, "Smoother everywhere", "Photos grow out of the grid and shrink back when you swipe down. Pages scale with the back gesture. Pick Minimal, Standard or Rich in Settings."),
+        Change(Icons.Rounded.TextFields, "Copy text from photos", "Tap Text in the viewer, then tap any line to copy it, call a number or open a link. Works offline."),
+        Change(Icons.Rounded.Description, "Documents", "Receipts, payment cards, IDs, tickets, notes, books and menus are sorted for you in Albums."),
+        Change(Icons.Rounded.AutoAwesome, "New filters", "Vivid, Dramatic and black-and-white filters inspired by the iPhone, more adjustments, and filters for videos."),
+        Change(Icons.Rounded.CleaningServices, "Tidier viewer and video player", "Fewer buttons, the star and source in the top bar, smooth scrubbing, and stacks for similar photos."),
     )
 }
 

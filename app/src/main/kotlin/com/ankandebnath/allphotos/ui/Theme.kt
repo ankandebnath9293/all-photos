@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -92,7 +93,7 @@ fun isDark(themeMode: Int): Boolean = when (themeMode) {
 }
 
 @Composable
-fun AppTheme(themeMode: Int, dynamic: Boolean, palette: Int, forceDark: Boolean = false, content: @Composable () -> Unit) {
+fun AppTheme(themeMode: Int, dynamic: Boolean, palette: Int, forceDark: Boolean = false, motion: Int = 1, content: @Composable () -> Unit) {
     val dark = forceDark || isDark(themeMode)
     val ctx = LocalContext.current
     val scheme = if (dynamic) {
@@ -100,7 +101,8 @@ fun AppTheme(themeMode: Int, dynamic: Boolean, palette: Int, forceDark: Boolean 
     } else {
         schemeFor(Palettes.get(palette), dark)
     }
-    CompositionLocalProvider(LocalDark provides dark) {
+    val m = remember(motion) { Motion(motion) }
+    CompositionLocalProvider(LocalDark provides dark, LocalMotion provides m) {
         MaterialExpressiveTheme(colorScheme = scheme, motionScheme = MotionScheme.expressive(), content = content)
     }
 }

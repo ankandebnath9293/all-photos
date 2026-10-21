@@ -22,6 +22,11 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.ankandebnath.allphotos.media.VideoLooks
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
@@ -71,6 +76,7 @@ fun TrimScreen(m: Media, onClose: () -> Unit) {
     var progress by remember { mutableFloatStateOf(-1f) }
     var menu by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
+    var look by remember { mutableIntStateOf(0) }
     val dur = (if (m.durationMs > 0) m.durationMs else holder.duration).coerceAtLeast(1)
     val startMs = (range.start * dur).toLong()
     val endMs = (range.endInclusive * dur).toLong()
@@ -96,13 +102,13 @@ fun TrimScreen(m: Media, onClose: () -> Unit) {
         holder.player.pause()
         progress = 0f
         job = scope.launch {
-            when (val r = Video.trim(ctx.applicationContext, m.uri, startMs, endMs) { progress = it }) {
+            when (val r = Video.trim(ctx.applicationContext, m.uri, startMs, endMs, VideoLooks.effects(look)) { progress = it }) {
                 is Video.TrimResult.Done -> {
                     val ok = if (replace && canReplace) {
                         Saver.overwrite(ctx.applicationContext, m.uri, r.file)
                     } else {
                         Saver.insert(
-                            ctx.applicationContext, r.file, Saver.nameLike(m.name, "_trim", "mp4"), "video/mp4",
+                            ctx.applicationContext, r.file, Saver.nameLike(m.name, if (look == 0) "_trim" else "_edit", "mp4"), "video/mp4",
                             Saver.folderOf(m, Video.CLIPS_FOLDER), m.taken,
                         ) != null
                     }
@@ -125,9 +131,9 @@ fun TrimScreen(m: Media, onClose: () -> Unit) {
         Column(Modifier.fillMaxSize().background(Color.Black)) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { job?.cancel(); onClose() }) { Icon(Icons.Rounded.Close, "Cancel", tint = Color.White) }
-                Text("Trim", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("Edit video", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Box {
-                    Button(onClick = { menu = true }, enabled = progress < 0f && (range.start > 0.001f || range.endInclusive < 0.999f)) { Text("Save") }
+                    Button(onClick = { menu = true }, enabled = progress < 0f && (look != 0 || range.start > 0.001f || range.endInclusive < 0.999f)) { Text("Save") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("Save as copy") }, onClick = { menu = false; save(false) })
                         DropdownMenuItem(
@@ -188,6 +194,22 @@ fun TrimScreen(m: Media, onClose: () -> Unit) {
                     onValueChangeFinished = { holder.seek(startMs, exact = true) },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)) {
+                    itemsIndexed(VideoLooks.NAMES) { i, n ->
+                        FilterChip(selected = look == i, onClick = {
+                            look = i
+                            // Preview the filter on the playing video.
+                            runCatching {
+                                val pos = holder.player.currentPosition
+                                holder.player.stop()
+                                holder.player.setVideoEffects(VideoLooks.effects(i))
+                                holder.player.prepare()
+                                holder.player.seekTo(pos)
+                                holder.player.play()
+                            }.onFailure { android.util.Log.w("AllPhotos", "Video filter preview failed", it) }
+                        }, label = { Text(n) })
+                    }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { range = 0f..1f }) { Text("Reset") }
                     Text(Fmt.duration(dur), color = Color.White.copy(alpha = 0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))

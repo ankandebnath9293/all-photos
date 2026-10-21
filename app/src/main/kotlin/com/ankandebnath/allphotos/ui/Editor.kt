@@ -61,6 +61,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -71,9 +73,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.ankandebnath.allphotos.data.Media
-import com.ankandebnath.allphotos.logic.Adjust
 import com.ankandebnath.allphotos.logic.CropRect
 import com.ankandebnath.allphotos.logic.EditMath
+import com.ankandebnath.allphotos.logic.Look
+import com.ankandebnath.allphotos.media.LookRender
 import com.ankandebnath.allphotos.media.Edit
 import com.ankandebnath.allphotos.media.Export
 import com.ankandebnath.allphotos.media.Images
@@ -90,22 +93,35 @@ private val ratios = listOf(
     Ratio("3:4", 3f / 4f), Ratio("4:3", 4f / 3f), Ratio("9:16", 9f / 16f), Ratio("16:9", 16f / 9f),
 )
 
-private enum class Slide(val label: String) { BRIGHTNESS("Brightness"), CONTRAST("Contrast"), SATURATION("Saturation"), WARMTH("Warmth"), FADE("Fade") }
-
-private fun Adjust.get(s: Slide) = when (s) {
-    Slide.BRIGHTNESS -> brightness
-    Slide.CONTRAST -> contrast
-    Slide.SATURATION -> saturation
-    Slide.WARMTH -> warmth
-    Slide.FADE -> fade
+private enum class Slide(val label: String, val min: Float = -1f) {
+    BRIGHTNESS("Brightness"), CONTRAST("Contrast"), HIGHLIGHTS("Highlights"), SHADOWS("Shadows"),
+    SATURATION("Saturation"), VIBRANCE("Vibrance"), WARMTH("Warmth"), TINT("Tint"), FADE("Fade", 0f), VIGNETTE("Vignette", 0f),
 }
 
-private fun Adjust.with(s: Slide, v: Float) = when (s) {
+private fun Look.get(s: Slide) = when (s) {
+    Slide.BRIGHTNESS -> brightness
+    Slide.CONTRAST -> contrast
+    Slide.HIGHLIGHTS -> highlights
+    Slide.SHADOWS -> shadows
+    Slide.SATURATION -> saturation
+    Slide.VIBRANCE -> vibrance
+    Slide.WARMTH -> warmth
+    Slide.TINT -> tint
+    Slide.FADE -> fade
+    Slide.VIGNETTE -> vignette
+}
+
+private fun Look.with(s: Slide, v: Float) = when (s) {
     Slide.BRIGHTNESS -> copy(brightness = v)
     Slide.CONTRAST -> copy(contrast = v)
+    Slide.HIGHLIGHTS -> copy(highlights = v)
+    Slide.SHADOWS -> copy(shadows = v)
     Slide.SATURATION -> copy(saturation = v)
+    Slide.VIBRANCE -> copy(vibrance = v)
     Slide.WARMTH -> copy(warmth = v)
+    Slide.TINT -> copy(tint = v)
     Slide.FADE -> copy(fade = v)
+    Slide.VIGNETTE -> copy(vignette = v)
 }
 
 /** A light photo editor: crop and rotate, a few adjustments, a few filters. */
@@ -118,7 +134,7 @@ fun Editor(m: Media, onClose: () -> Unit) {
     var flip by remember { mutableStateOf(false) }
     var crop by remember { mutableStateOf(CropRect()) }
     var ratio by remember { mutableIntStateOf(0) }
-    var adjust by remember { mutableStateOf(Adjust()) }
+    var adjust by remember { mutableStateOf(Look()) }
     var filter by remember { mutableIntStateOf(0) }
     var tab by remember { mutableIntStateOf(0) }
     var slide by remember { mutableStateOf(Slide.BRIGHTNESS) }
@@ -143,8 +159,9 @@ fun Editor(m: Media, onClose: () -> Unit) {
             Bitmap.createScaledBitmap(b, (b.width * s).roundToInt().coerceAtLeast(1), (b.height * s).roundToInt().coerceAtLeast(1), true).asImageBitmap()
         }
     }
-    val matrix = remember(adjust, filter) { ColorFilter.colorMatrix(ColorMatrix(EditMath.matrix(adjust, filter))) }
-    val edit = Edit(turns, flip, crop, adjust, filter)
+    val look = remember(adjust, filter) { Look.FILTERS[filter].second + adjust }
+    val edit = Edit(turns, flip, crop, look)
+    val thumbPx = with(LocalDensity.current) { 72.dp.toPx() }
 
     fun applyRatio(i: Int, c: CropRect = crop): CropRect {
         val img = shown ?: return c
@@ -173,7 +190,7 @@ fun Editor(m: Media, onClose: () -> Unit) {
                 Text("Edit", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (!edit.isEmpty) {
                     TextButton(onClick = {
-                        turns = 0; flip = false; crop = CropRect(); ratio = 0; adjust = Adjust(); filter = 0
+                        turns = 0; flip = false; crop = CropRect(); ratio = 0; adjust = Look(); filter = 0
                     }) { Text("Reset") }
                 }
                 Box {
@@ -206,7 +223,7 @@ fun Editor(m: Media, onClose: () -> Unit) {
                 when {
                     failed -> Text("This photo can't be edited", color = Color.White)
                     img == null -> LoadingIndicator()
-                    else -> CropArea(img, matrix, crop, cropping = tab == 0, ratio = ratios[ratio].value.let { r ->
+                    else -> CropArea(img, look, crop, cropping = tab == 0, ratio = ratios[ratio].value.let { r ->
                         if (r < 0f) img.width.toFloat() / img.height else r
                     }) { crop = it }
                 }
@@ -239,13 +256,13 @@ fun Editor(m: Media, onClose: () -> Unit) {
                         Slider(
                             value = adjust.get(slide),
                             onValueChange = { v -> adjust = adjust.with(slide, if (abs(v) < 0.03f) 0f else v) },
-                            valueRange = -1f..1f,
+                            valueRange = slide.min..1f,
                             modifier = Modifier.padding(horizontal = 24.dp),
                         )
                     }
                     else -> {
                         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            itemsIndexed(EditMath.filters) { i, f ->
+                            itemsIndexed(Look.FILTERS) { i, f ->
                                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { filter = i }.padding(4.dp)) {
                                     val sm = small
                                     Box(
@@ -253,11 +270,12 @@ fun Editor(m: Media, onClose: () -> Unit) {
                                             .then(if (filter == i) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp)) else Modifier),
                                     ) {
                                         if (sm != null) {
-                                            Image(sm, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, colorFilter = ColorFilter.colorMatrix(ColorMatrix(f.matrix)))
+                                            val fx = remember(f) { LookRender.effect(f.second, thumbPx, thumbPx) }
+                                            Image(sm, null, Modifier.fillMaxSize().graphicsLayer { renderEffect = fx }, contentScale = ContentScale.Crop)
                                         }
                                     }
                                     Gap(4.dp)
-                                    Text(f.name, color = Color.White, style = MaterialTheme.typography.labelMedium)
+                                    Text(f.first, color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                 }
                             }
                         }
@@ -277,12 +295,12 @@ fun Editor(m: Media, onClose: () -> Unit) {
 fun AppDarkSurface(content: @Composable () -> Unit) {
     val ctx = LocalContext.current
     val s = remember { com.ankandebnath.allphotos.data.Prefs.get(ctx) }.now
-    AppTheme(s.themeMode, s.dynamicColor, s.palette, forceDark = true, content = content)
+    AppTheme(s.themeMode, s.dynamicColor, s.palette, forceDark = true, motion = s.motion, content = content)
 }
 
 /** The photo with its crop frame. Drag the corners or edges to crop, or the middle to move it. */
 @Composable
-private fun CropArea(img: ImageBitmap, filter: ColorFilter, crop: CropRect, cropping: Boolean, ratio: Float, onCrop: (CropRect) -> Unit) {
+private fun CropArea(img: ImageBitmap, look: Look, crop: CropRect, cropping: Boolean, ratio: Float, onCrop: (CropRect) -> Unit) {
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val bw = constraints.maxWidth.toFloat()
@@ -295,30 +313,35 @@ private fun CropArea(img: ImageBitmap, filter: ColorFilter, crop: CropRect, crop
         val cur = androidx.compose.runtime.rememberUpdatedState(crop)
 
         if (!cropping) {
-            // Outside the crop tool, show just the cropped part, as it will be saved.
-            Canvas(Modifier.fillMaxSize()) {
-                val sw = img.width * crop.w
-                val sh = img.height * crop.h
-                val ca = sw / sh
-                val dw = if (bw / bh > ca) bh * ca else bw
-                val dh = if (bw / bh > ca) bh else bw / ca
-                drawImage(
-                    img,
-                    srcOffset = IntOffset((img.width * crop.l).roundToInt(), (img.height * crop.t).roundToInt()),
-                    srcSize = androidx.compose.ui.unit.IntSize(sw.roundToInt().coerceAtLeast(1), sh.roundToInt().coerceAtLeast(1)),
-                    dstOffset = IntOffset(((bw - dw) / 2f).roundToInt(), ((bh - dh) / 2f).roundToInt()),
-                    dstSize = androidx.compose.ui.unit.IntSize(dw.roundToInt(), dh.roundToInt()),
-                    colorFilter = filter,
-                )
+            // Outside the crop tool, show just the cropped part, toned, as it will be saved.
+            val part = remember(img, crop) {
+                if (crop.isFull) img else {
+                    val src = img.asAndroidBitmap()
+                    val x = (crop.l * src.width).roundToInt().coerceIn(0, src.width - 1)
+                    val y = (crop.t * src.height).roundToInt().coerceIn(0, src.height - 1)
+                    val w = (crop.w * src.width).roundToInt().coerceIn(1, src.width - x)
+                    val h = (crop.h * src.height).roundToInt().coerceIn(1, src.height - y)
+                    Bitmap.createBitmap(src, x, y, w, h).asImageBitmap()
+                }
             }
+            val ca = part.width.toFloat() / part.height
+            val dw = if (bw / bh > ca) bh * ca else bw
+            val dh = if (bw / bh > ca) bh else bw / ca
+            val fx = remember(look, dw, dh) { LookRender.effect(look, dw, dh) }
+            Image(
+                part, null,
+                Modifier.size(with(density) { dw.toDp() }, with(density) { dh.toDp() }).graphicsLayer { renderEffect = fx },
+                contentScale = ContentScale.FillBounds,
+            )
             return@BoxWithConstraints
         }
         Box(Modifier.fillMaxSize()) {
+            val fxFull = remember(look, fw, fh) { LookRender.effect(look, fw, fh) }
             Image(
                 img, null,
-                Modifier.size(with(density) { fw.toDp() }, with(density) { fh.toDp() }).offset { IntOffset(left.roundToInt(), top.roundToInt()) },
+                Modifier.size(with(density) { fw.toDp() }, with(density) { fh.toDp() }).offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                    .graphicsLayer { renderEffect = fxFull },
                 contentScale = ContentScale.FillBounds,
-                colorFilter = filter,
             )
             run {
                 val handle = with(density) { 28.dp.toPx() }

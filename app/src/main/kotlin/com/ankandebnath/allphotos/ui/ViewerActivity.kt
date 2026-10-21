@@ -55,7 +55,7 @@ class ViewerActivity : ComponentActivity() {
         if (Access.storage(this)) MediaRepo.start(this)
         setContent {
             val s by prefs.settings.collectAsState()
-            AppTheme(s.themeMode, s.dynamicColor, s.palette, forceDark = true) {
+            AppTheme(s.themeMode, s.dynamicColor, s.palette, forceDark = true, motion = s.motion) {
                 OpenedFile(uri, mime, secure) { finish() }
             }
         }

@@ -17,7 +17,7 @@ data class Scan(val id: Long, val hash: Long?, val sharp: Double?, val mod: Long
  * The app's own notes about each file: important marks, where screenshots came from, and the
  * search index. Photos themselves stay where they are; only these notes live here.
  */
-class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db", null, 1) {
+class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -27,7 +27,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
                 src_pkg TEXT, src_url TEXT, src_how INTEGER NOT NULL DEFAULT 0,
                 hash INTEGER, sharp REAL, hash_mod INTEGER NOT NULL DEFAULT 0,
                 text_mod INTEGER NOT NULL DEFAULT 0, labels TEXT,
-                trashed_at INTEGER)""",
+                trashed_at INTEGER, doc INTEGER NOT NULL DEFAULT -1)""",
         )
         db.execSQL("CREATE INDEX meta_important ON meta(important)")
         db.execSQL("CREATE VIRTUAL TABLE fts USING fts4(body)")
@@ -35,7 +35,10 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
         db.execSQL("CREATE INDEX fg_t ON fg(t)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // 2: which kind of document a photo shows (-1 not sorted yet, 0 none, otherwise kind + 1).
+        if (oldVersion < 2) db.execSQL("ALTER TABLE meta ADD COLUMN doc INTEGER NOT NULL DEFAULT -1")
+    }
 
     override fun onConfigure(db: SQLiteDatabase) {
         db.enableWriteAheadLogging()
@@ -122,6 +125,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
             db.update("meta", ContentValues().apply {
                 put("text_mod", mod)
                 put("labels", labels)
+                put("doc", -1)
             }, "id=?", arrayOf(id.toString()))
             db.execSQL("DELETE FROM fts WHERE docid=?", arrayOf<Any?>(id))
             val body = (text + "\n" + labels).trim()
@@ -130,6 +134,42 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
         } finally {
             db.endTransaction()
         }
+    }
+
+    /** Photos whose text has been read but not yet sorted into a document kind: id, text, labels. */
+    fun unsorted(): List<Triple<Long, String, String>> {
+        val out = ArrayList<Triple<Long, String, String>>()
+        readableDatabase.rawQuery(
+            "SELECT meta.id, fts.body, meta.labels FROM meta LEFT JOIN fts ON fts.docid = meta.id WHERE meta.doc = -1 AND meta.text_mod != 0",
+            null,
+        ).use { c ->
+            while (c.moveToNext()) {
+                val labels = c.getString(2).orEmpty()
+                val body = c.getString(1).orEmpty()
+                out += Triple(c.getLong(0), body.removeSuffix(labels).trim(), labels)
+            }
+        }
+        return out
+    }
+
+    fun setDocs(kinds: Map<Long, Int>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for ((id, k) in kinds) db.execSQL("UPDATE meta SET doc=? WHERE id=?", arrayOf<Any?>(k, id))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Document kind (ordinal of DocKind) for every photo that shows one. */
+    fun docs(): Map<Long, Int> {
+        val out = HashMap<Long, Int>()
+        readableDatabase.rawQuery("SELECT id, doc FROM meta WHERE doc > 0", null).use { c ->
+            while (c.moveToNext()) out[c.getLong(0)] = c.getInt(1) - 1
+        }
+        return out
     }
 
     fun textOf(id: Long): String? =

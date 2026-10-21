@@ -32,6 +32,14 @@ class App : Application() {
         // Marks where screenshot handling starts, so only new screenshots get a notification.
         scope.launch(Dispatchers.IO) { runCatching { com.ankandebnath.allphotos.capture.ShotTracker.process(this@App) } }
         if (Prefs.get(this).now.onboarded) Work.schedule(this)
+        // Put back files version 1.0 moved to the trash from before the app was installed.
+        scope.launch(Dispatchers.IO) {
+            val n = runCatching { com.ankandebnath.allphotos.work.Cleaner.restoreEarly(this@App) }.getOrDefault(0)
+            if (n > 0) {
+                com.ankandebnath.allphotos.ui.Toasts.show("Put back $n older file${if (n == 1) "" else "s"} from the trash")
+                Prefs.get(this@App).restoredCount = 0
+            }
+        }
     }
 
     override fun onTrimMemory(level: Int) {

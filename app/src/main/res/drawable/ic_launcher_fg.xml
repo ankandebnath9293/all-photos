@@ -2,16 +2,15 @@
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
     <!-- Back card, tilted -->
     <group android:pivotX="54" android:pivotY="54" android:rotation="-12">
-        <path android:fillColor="#66FFFFFF"
+        <path android:fillColor="#FF5A5A5E"
             android:pathData="M37,33h34a6,6 0 0 1 6,6v28a6,6 0 0 1 -6,6h-34a6,6 0 0 1 -6,-6v-28a6,6 0 0 1 6,-6z" />
     </group>
     <!-- Front card -->
     <path android:fillColor="#FFFFFFFF"
         android:pathData="M37,37h36a7,7 0 0 1 7,7v26a7,7 0 0 1 -7,7h-36a7,7 0 0 1 -7,-7v-26a7,7 0 0 1 7,-7z" />
     <!-- Sun -->
-    <path android:fillColor="#FFFFB020"
+    <path android:fillColor="#FF0B0B0C"
         android:pathData="M66,49m-5,0a5,5 0 1 1 10,0a5,5 0 1 1 -10,0" />
     <!-- Hills -->
-    <path android:fillColor="#FF6D5BD8"
-        android:pathData="M30,67L42.6,53.6C43.4,52.8 44.6,52.8 45.4,53.6L55,63.5L59.8,58.6C60.6,57.8 61.8,57.8 62.6,58.6L80,70A7,7 0 0 1 73,77L37,77A7,7 0 0 1 30,70Z" />
+    <path android:fillColor="#FF0B0B0C" android:pathData="M30,67L42.6,53.6C43.4,52.8 44.6,52.8 45.4,53.6L55,63.5L59.8,58.6C60.6,57.8 61.8,57.8 62.6,58.6L80,70A7,7 0 0 1 73,77L37,77A7,7 0 0 1 30,70Z" />
 </vector>

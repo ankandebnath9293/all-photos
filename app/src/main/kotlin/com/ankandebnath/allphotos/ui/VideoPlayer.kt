@@ -112,8 +112,6 @@ class PlayerHolder(ctx: Context) {
     var position by mutableLongStateOf(0L)
     var duration by mutableLongStateOf(0L)
     var aspect by mutableFloatStateOf(0f)
-    var speed by mutableFloatStateOf(1f)
-    var muted by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
     init {
@@ -186,7 +184,32 @@ class PlayerHolder(ctx: Context) {
         if (ended) {
             player.seekTo(0)
             player.play()
-        } else if (player.isPlaying) player.pause() else player.play()
+        } else if (player.playWhenReady) player.pause() else player.play()
+    }
+
+    private var scrubResume = false
+    private var lastScrub = 0L
+
+    /** Dragging the seek bar: the video holds still and shows the nearest frame quickly. */
+    fun beginScrub() {
+        scrubResume = player.playWhenReady
+        player.pause()
+        player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+    }
+
+    fun scrubTo(ms: Long) {
+        position = ms
+        val now = android.os.SystemClock.uptimeMillis()
+        // Asking for a new frame on every finger movement makes the decoder fall behind; a few a second is smoother.
+        if (now - lastScrub >= 45) {
+            lastScrub = now
+            player.seekTo(ms.coerceIn(0, if (duration > 0) duration else Long.MAX_VALUE))
+        }
+    }
+
+    fun endScrub(ms: Long) {
+        seek(ms, exact = true)
+        if (scrubResume) player.play()
     }
 
     fun seek(ms: Long, exact: Boolean) {
@@ -202,64 +225,32 @@ class PlayerHolder(ctx: Context) {
         seek(player.currentPosition + (frames * f).toLong(), exact = true)
     }
 
-    fun setRate(r: Float) {
-        speed = r
-        player.setPlaybackSpeed(r)
-    }
-
-    fun toggleMute() {
-        muted = !muted
-        player.volume = if (muted) 0f else 1f
-    }
-
     fun release() = player.release()
 }
 
-/** The picture of the current video. Other pages show the thumbnail until they are current. */
+/**
+ * The one picture surface for the whole viewer. It stays alive while the viewer is open and is
+ * shown over whichever page is a video, so switching videos never loses the picture.
+ */
 @Composable
-fun VideoSurface(holder: PlayerHolder, current: Boolean, placeholder: @Composable () -> Unit, onTap: () -> Unit) {
-    val tap by rememberUpdatedState(onTap)
-    Box(
-        Modifier.fillMaxSize().pointerInput(holder) {
-            // Tap shows or hides the controls; double-tap on either side skips 10 seconds.
-            detectTapGestures(
-                onTap = { tap() },
-                onDoubleTap = { p ->
-                    val now = holder.player.currentPosition
-                    holder.seek(if (p.x < size.width / 2f) now - 10_000 else now + 10_000, exact = false)
-                },
-            )
-        },
-        contentAlignment = Alignment.Center,
+fun SharedVideoSurface(holder: PlayerHolder, visible: Boolean, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { c -> SurfaceView(c).also { holder.player.setVideoSurfaceView(it) } },
+        update = { v -> v.visibility = if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE },
+        onRelease = { v -> holder.player.clearVideoSurfaceView(v) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun VideoError(text: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.padding(32.dp).clip(RoundedCornerShape(24.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val ar = holder.aspect
-        if (current && holder.error == null) {
-            Box(if (ar > 0f) Modifier.fillMaxWidth().aspectRatio(ar, matchHeightConstraintsFirst = ar < 1f) else Modifier.fillMaxSize()) {
-                AndroidView(
-                    factory = { c -> SurfaceView(c).also { holder.player.setVideoSurfaceView(it) } },
-                    update = { v -> holder.player.setVideoSurfaceView(v) },
-                    onRelease = { v -> holder.player.clearVideoSurfaceView(v) },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        if (!current || !holder.firstFrame) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { placeholder() }
-        if (!current) {
-            Box(Modifier.size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(40.dp))
-            }
-        }
-        val err = holder.error
-        if (current && err != null) {
-            Column(
-                Modifier.padding(32.dp).clip(RoundedCornerShape(24.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(Icons.Rounded.VideocamOff, null, tint = Color.White)
-                Gap(8.dp)
-                Text(err, color = Color.White, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
+        Icon(Icons.Rounded.VideocamOff, null, tint = Color.White)
+        Gap(8.dp)
+        Text(text, color = Color.White, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -274,10 +265,10 @@ fun CenterPlay(holder: PlayerHolder, visible: Boolean, modifier: Modifier = Modi
             Icon(
                 when {
                     holder.ended -> Icons.Rounded.Replay
-                    holder.playing -> Icons.Rounded.Pause
+                    holder.wantsPlay -> Icons.Rounded.Pause
                     else -> Icons.Rounded.PlayArrow
                 },
-                if (holder.playing) "Pause" else "Play",
+                if (holder.wantsPlay) "Pause" else "Play",
                 tint = Color.White,
                 modifier = Modifier.size(48.dp),
             )
@@ -285,18 +276,13 @@ fun CenterPlay(holder: PlayerHolder, visible: Boolean, modifier: Modifier = Modi
     }
 }
 
-private val speeds = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-
-/**
- * Seek bar and tools: speed, frame-by-frame, save the exact frame, mute, trim and rotate.
- */
+/** Seek bar and a few tools: 10 seconds back or forward, frame by frame, save this frame, rotate. */
 @Composable
-fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onTrim: () -> Unit, onRotate: () -> Unit, modifier: Modifier = Modifier) {
+fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onRotate: () -> Unit, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
-    var speedMenu by remember { mutableStateOf(false) }
     var lastFrame by remember { mutableStateOf<Uri?>(null) }
     var saving by remember { mutableStateOf(false) }
     val view = LocalView.current
@@ -307,7 +293,7 @@ fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onTrim: () -> Uni
                 holder.position = holder.player.currentPosition
                 if (holder.player.duration > 0) holder.duration = holder.player.duration
             }
-            delay(if (holder.playing) 80 else 250)
+            delay(if (holder.playing) 50 else 250)
         }
     }
     DisposableEffect(holder.playing) {
@@ -352,12 +338,15 @@ fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onTrim: () -> Uni
             Slider(
                 value = frac,
                 onValueChange = { v ->
-                    dragging = true
+                    if (!dragging) {
+                        dragging = true
+                        holder.beginScrub()
+                    }
                     dragValue = v
-                    holder.seek((v * dur).toLong(), exact = false)
+                    holder.scrubTo((v * dur).toLong())
                 },
                 onValueChangeFinished = {
-                    holder.seek((dragValue * dur).toLong(), exact = true)
+                    holder.endScrub((dragValue * dur).toLong())
                     dragging = false
                 },
                 colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.3f)),
@@ -365,21 +354,9 @@ fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onTrim: () -> Uni
             )
             Text(Fmt.duration(dur), color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                TextButton(onClick = { speedMenu = true }) {
-                    Text(if (holder.speed == 1f) "1×" else "${holder.speed}×".replace(".0×", "×"), color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                DropdownMenu(expanded = speedMenu, onDismissRequest = { speedMenu = false }) {
-                    speeds.forEach { r ->
-                        DropdownMenuItem(text = { Text("${r}×".replace(".0×", "×")) }, onClick = { holder.setRate(r); speedMenu = false })
-                    }
-                }
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             ToolIcon(Icons.Rounded.Replay10, "Back 10 seconds") { holder.seek(holder.player.currentPosition - 10_000, false) }
             ToolIcon(Icons.Rounded.SkipPrevious, "Previous frame") { holder.step(-1, fps) }
-            ToolIcon(Icons.Rounded.SkipNext, "Next frame") { holder.step(1, fps) }
-            ToolIcon(Icons.Rounded.Forward10, "Forward 10 seconds") { holder.seek(holder.player.currentPosition + 10_000, false) }
             ToolIcon(Icons.Rounded.CameraAlt, "Save this frame", highlight = true) {
                 val item = m ?: return@ToolIcon
                 if (saving) return@ToolIcon
@@ -390,8 +367,8 @@ fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onTrim: () -> Uni
                     if (u != null) lastFrame = u else Toasts.show("Couldn't save the frame")
                 }
             }
-            ToolIcon(if (holder.muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp, "Mute") { holder.toggleMute() }
-            if (m != null) ToolIcon(Icons.Rounded.ContentCut, "Trim") { holder.player.pause(); onTrim() }
+            ToolIcon(Icons.Rounded.SkipNext, "Next frame") { holder.step(1, fps) }
+            ToolIcon(Icons.Rounded.Forward10, "Forward 10 seconds") { holder.seek(holder.player.currentPosition + 10_000, false) }
             ToolIcon(Icons.Rounded.ScreenRotation, "Rotate") { onRotate() }
         }
     }
@@ -399,12 +376,12 @@ fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onTrim: () -> Uni
 
 @Composable
 private fun ToolIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, highlight: Boolean = false, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
         Box(
-            if (highlight) Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary) else Modifier.size(36.dp),
+            if (highlight) Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary) else Modifier.size(40.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, desc, tint = if (highlight) MaterialTheme.colorScheme.onPrimary else Color.White, modifier = Modifier.size(22.dp))
+            Icon(icon, desc, tint = if (highlight) MaterialTheme.colorScheme.onPrimary else Color.White, modifier = Modifier.size(if (highlight) 24.dp else 24.dp))
         }
     }
 }

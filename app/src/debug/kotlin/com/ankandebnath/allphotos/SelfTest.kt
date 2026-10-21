@@ -11,7 +11,8 @@ import com.ankandebnath.allphotos.data.Db
 import com.ankandebnath.allphotos.data.MediaRepo
 import com.ankandebnath.allphotos.data.Ops
 import com.ankandebnath.allphotos.data.Prefs
-import com.ankandebnath.allphotos.logic.Adjust
+import com.ankandebnath.allphotos.logic.Look
+import com.ankandebnath.allphotos.media.LookRender
 import com.ankandebnath.allphotos.logic.Chat
 import com.ankandebnath.allphotos.logic.CropRect
 import com.ankandebnath.allphotos.logic.ShotBatch
@@ -62,8 +63,9 @@ object SelfTest {
         val video = lib.items.firstOrNull { it.isVideo && it.chat == null }
 
         step("lib", out) {
-            Log.i(TAG, "items=${lib.items.size} shots=${lib.screenshots.size} wa=${lib.items.count { it.chat == Chat.WHATSAPP }} tg=${lib.items.count { it.chat == Chat.TELEGRAM }} videos=${lib.items.count { it.isVideo }}")
-            lib.items.size >= 5 && lib.screenshots.isNotEmpty() && lib.items.any { it.chat == Chat.WHATSAPP } && lib.items.any { it.chat == Chat.TELEGRAM }
+            Log.i(TAG, "items=${lib.items.size} shots=${lib.screenshots.size} wa=${lib.items.count { it.chat == Chat.WHATSAPP }} tg=${lib.items.count { it.chat == Chat.TELEGRAM }} fb=${lib.items.count { it.chat == Chat.FACEBOOK }} videos=${lib.items.count { it.isVideo }}")
+            lib.items.size >= 5 && lib.screenshots.isNotEmpty() && lib.items.any { it.chat == Chat.WHATSAPP } && lib.items.any { it.chat == Chat.TELEGRAM } &&
+                lib.items.any { it.chat == Chat.FACEBOOK }
         }
         step("db", out) {
             val id = photos.first().id
@@ -84,6 +86,43 @@ object SelfTest {
             val t = Analyze.text(b).orEmpty()
             Log.i(TAG, "ocr text: $t")
             t.contains("ALLPHOTOS", ignoreCase = true)
+        }
+        step("textlines", out) {
+            val b = Bitmap.createBitmap(1080, 700, Bitmap.Config.ARGB_8888)
+            val c = Canvas(b)
+            c.drawColor(Color.WHITE)
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 80f }
+            c.drawText("Call 01712345678", 60f, 250f, p)
+            c.drawText("motionblurmedia.agency", 60f, 450f, p)
+            val lines = Analyze.lines(b).orEmpty()
+            Log.i(TAG, "text lines: ${lines.map { it.text + " @" + it.box }}")
+            val all = lines.joinToString("\n") { it.text }
+            val smart = com.ankandebnath.allphotos.logic.Smart.find(all)
+            Log.i(TAG, "smart: $smart")
+            lines.size >= 2 && lines.all { it.box.width() > 0 } && smart.isNotEmpty()
+        }
+        step("shader", out) {
+            val sh = android.graphics.RuntimeShader(Look.SHADER)
+            sh.setFloatUniform("size", 100f, 100f)
+            val u = Look.FILTERS[1].second.uniforms()
+            Look.NAMES.forEachIndexed { i, n -> sh.setFloatUniform(n, u[i]) }
+            LookRender.effect(Look.FILTERS[4].second, 100f, 100f) != null
+        }
+        step("bake", out) {
+            val b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+            b.eraseColor(Color.rgb(150, 100, 80))
+            val o = LookRender.bake(b, Look.FILTERS.first { it.first == "Mono" }.second)
+            val px = o.getPixel(32, 32)
+            Log.i(TAG, "bake mono: ${Color.red(px)},${Color.green(px)},${Color.blue(px)}")
+            Color.red(px) == Color.green(px) && Color.green(px) == Color.blue(px)
+        }
+        step("docs", out) {
+            val id = lib.items.first { !it.isVideo && !it.isScreenshot }.id
+            db.setText(id, "Sub Total 470.00\nVAT 23.50\nGrand Total 493.50\nCash 500.00\nChange 6.50", "", lib.byId[id]!!.modified)
+            com.ankandebnath.allphotos.work.Indexer.sortDocs(ctx)
+            val k = db.docs()[id]
+            Log.i(TAG, "docs: $k")
+            k == com.ankandebnath.allphotos.logic.DocKind.RECEIPT.ordinal
         }
         step("labels", out) {
             val b = Analyze.forReading(ctx, photos.first()) ?: return@step false
@@ -128,6 +167,16 @@ object SelfTest {
                 }
             }
         }
+        step("videofilter", out) {
+            val v = video ?: return@step null
+            when (val r = Video.trim(ctx, v.uri, 0, 1000, com.ankandebnath.allphotos.media.VideoLooks.effects(1))) {
+                is Video.TrimResult.Done -> (r.file.length() > 1000).also { r.file.delete() }
+                is Video.TrimResult.Failed -> {
+                    Log.w(TAG, "video filter: ${r.reason}")
+                    false
+                }
+            }
+        }
         step("convert", out) {
             val h = lib.items.firstOrNull { it.isHeic } ?: return@step null
             val u = Convert.toJpg(ctx, h) ?: return@step false
@@ -136,7 +185,7 @@ object SelfTest {
         }
         step("edit", out) {
             val src = photos.first()
-            val e = Edit(1, false, CropRect(0.1f, 0.1f, 0.9f, 0.8f), Adjust(brightness = 0.2f, contrast = 0.1f), 2)
+            val e = Edit(1, false, CropRect(0.1f, 0.1f, 0.9f, 0.8f), Look.FILTERS[1].second + Look(brightness = 0.1f, vignette = 0.3f))
             val u = Export.save(ctx, src, e, replace = false) ?: return@step false
             made += u
             true
@@ -156,10 +205,32 @@ object SelfTest {
             Log.i(TAG, "trash: moved=${r.done} inTrash=$inTrash restored=$restored deleted=${gone.done}")
             r.done == items.size && inTrash == items.size && back.done == 1 && restored
         }
+        step("restore", out) {
+            // Pretend version 1.0 trashed two screenshots from before the install day, then check 1.1 puts them back.
+            MediaRepo.refresh(ctx)
+            val prefs = Prefs.get(ctx)
+            val realStart = prefs.rulesStart
+            val shots = MediaRepo.now.screenshots.take(2)
+            if (shots.size < 2) return@step false
+            prefs.rulesStart = System.currentTimeMillis() + 3_600_000L
+            prefs.restoredEarlyTrash = false
+            val moved = Ops.trash(ctx, shots, allowDialog = false).done
+            val back = Cleaner.restoreEarly(ctx)
+            MediaRepo.refresh(ctx)
+            val present = shots.all { s -> MediaRepo.now.byId.containsKey(s.id) }
+            prefs.rulesStart = realStart
+            Log.i(TAG, "restore: moved=$moved back=$back present=$present")
+            moved == 2 && back == 2 && present && prefs.restoredEarlyTrash
+        }
         step("rules", out) {
-            val plan = Cleaner.plan(MediaRepo.now, Prefs.get(ctx).now, emptySet(), now = System.currentTimeMillis() + 400L * 86_400_000L)
+            // A year from now, counting from long ago: everything is due.
+            val plan = Cleaner.plan(MediaRepo.now, Prefs.get(ctx).now, emptySet(), start = 0L, now = System.currentTimeMillis() + 400L * 86_400_000L)
+            // Counting from today (the default), the pushed test files are older than the start: nothing is due.
+            val fromInstall = Cleaner.plan(MediaRepo.now, Prefs.get(ctx).now, emptySet(), start = System.currentTimeMillis() + 60_000L, now = System.currentTimeMillis() + 400L * 86_400_000L)
+            Log.i(TAG, "rules from install: ${fromInstall.all.size} due")
+            if (fromInstall.all.isNotEmpty()) return@step false
             Log.i(TAG, "rules (a year ahead): shots=${plan.shots.size} wa=${plan.whatsapp.size} tg=${plan.telegram.size}")
-            plan.shots.size == MediaRepo.now.screenshots.size && plan.whatsapp.isNotEmpty() && plan.telegram.isNotEmpty()
+            plan.shots.size == MediaRepo.now.screenshots.size && plan.whatsapp.isNotEmpty() && plan.telegram.isNotEmpty() && plan.facebook.isEmpty()
         }
         step("notify", out) {
             if (!Notifier.allowed(ctx)) return@step null

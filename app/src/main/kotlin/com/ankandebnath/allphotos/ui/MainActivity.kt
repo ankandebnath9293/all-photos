@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
                 val style = if (dark) SystemBarStyle.dark(AColor.TRANSPARENT) else SystemBarStyle.light(AColor.TRANSPARENT, AColor.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
-            AppTheme(s.themeMode, s.dynamicColor, s.palette) {
+            AppTheme(s.themeMode, s.dynamicColor, s.palette, motion = s.motion) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val g = rememberGrants()
                     LaunchedEffect(g.storage) { if (g.storage) (application as App).start() }

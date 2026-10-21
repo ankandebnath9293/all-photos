@@ -4,7 +4,13 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -12,10 +18,15 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -40,6 +51,7 @@ import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
+import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.Transform
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.AlertDialog
@@ -48,28 +60,46 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,22 +115,81 @@ import com.ankandebnath.allphotos.logic.Links
 import com.ankandebnath.allphotos.media.DetailsReader
 import com.ankandebnath.allphotos.media.Share
 import com.ankandebnath.allphotos.media.VideoFacts
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 
 private val titleFmt = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.US)
 private val timeFmt = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
-/** The full-screen viewer: swipe between photos and videos, zoom, play, and act on them. */
+/** Draws the page as it looks in [frame]: moved, scaled and clipped. */
+private fun Modifier.heroTransform(frame: () -> Frame): Modifier = this
+    .drawWithContent {
+        val f = frame()
+        val r = f.clip
+        val whole = f.corner < 0.5f && r.left <= 0.5f && r.top <= 0.5f && r.right >= size.width - 0.5f && r.bottom >= size.height - 0.5f
+        if (whole) {
+            drawContent()
+        } else {
+            val p = Path().apply { addRoundRect(RoundRect(r, CornerRadius(f.corner))) }
+            clipPath(p) { this@drawWithContent.drawContent() }
+        }
+    }
+    .graphicsLayer {
+        val f = frame()
+        scaleX = f.scale
+        scaleY = f.scale
+        translationX = f.center.x - size.width / 2f
+        translationY = f.center.y - size.height / 2f
+        alpha = f.alpha
+    }
+
+/** A vertical drag on a video page, handed to the viewer like a photo's. */
+private fun Modifier.verticalDrag(enabled: Boolean, onDelta: (Offset) -> Unit, onEnd: () -> Unit): Modifier =
+    if (!enabled) this else this.pointerInput(Unit) {
+        val slop = viewConfiguration.touchSlop
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            var total = Offset.Zero
+            var dragging = false
+            do {
+                val ev = awaitPointerEvent()
+                if (ev.changes.count { it.pressed } > 1) break
+                val ch = ev.changes.firstOrNull() ?: break
+                val d = ch.positionChange()
+                total += d
+                if (!dragging && abs(total.y) > slop * 1.5f && abs(total.y) > abs(total.x) * 1.4f && !ch.isConsumed) {
+                    dragging = true
+                    onDelta(total)
+                } else if (dragging) {
+                    onDelta(d)
+                }
+                if (dragging) ch.consume()
+            } while (ev.changes.any { it.pressed })
+            if (dragging) onEnd()
+        }
+    }
+
+/**
+ * The full-screen viewer. Opens by growing out of the tapped thumbnail and closes by shrinking
+ * back into it (back, swipe down, or the arrow). Swipe up shows the details.
+ */
 @Composable
 fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val activity = ctx as? Activity
     val view = LocalView.current
+    val density = LocalDensity.current
+    val motion = LocalMotion.current
+    val darkTheme = LocalDark.current
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
     val db = remember { Db.get(ctx) }
     val important by db.important.collectAsState()
     val sources by db.sources.collectAsState()
@@ -117,20 +206,48 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
     val current = items.getOrNull(pager.currentPage.coerceIn(0, items.lastIndex))
     var chrome by remember { mutableStateOf(true) }
     var zoomed by remember { mutableStateOf(false) }
-    var dismiss by remember { mutableFloatStateOf(0f) }
     var menu by remember { mutableStateOf(false) }
     var confirmForever by remember { mutableStateOf(false) }
+    var textMode by remember { mutableStateOf(false) }
+    var resetZoom by remember { mutableIntStateOf(0) }
     val hdrPages = remember(req) { mutableStateMapOf<Long, Boolean>() }
     val player = remember { PlayerHolder(ctx.applicationContext) }
     var landscape by remember { mutableStateOf(false) }
 
+    // The hero animation: from the tapped cell into place, and back out on close.
+    val startId = items.getOrNull(req.start.coerceIn(0, items.lastIndex))?.id
+    val origin = remember { if (motion.minimal || req.explicit.isNotEmpty()) null else startId?.let { HeroBounds.get(it) } }
+    val enter = remember { Animatable(if (origin != null) 0f else 1f) }
+    val appear = remember { Animatable(if (origin != null) 1f else 0f) }
+    val drag = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val back = remember { Animatable(0f) }
+    var closing by remember { mutableStateOf<Pair<Frame, Frame>?>(null) }
+    val closeT = remember { Animatable(0f) }
+    val corner = with(density) { 3.dp.toPx() }
+
     DisposableEffect(Unit) {
+        HeroBounds.hidden = startId.takeIf { origin != null }
+        val w = activity?.window
+        val c = w?.let { WindowCompat.getInsetsController(it, view) }
+        c?.isAppearanceLightStatusBars = false
+        c?.isAppearanceLightNavigationBars = false
         onDispose {
             player.release()
+            HeroBounds.hidden = null
             activity?.window?.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            activity?.window?.let { w -> WindowCompat.getInsetsController(w, view).show(WindowInsetsCompat.Type.systemBars()) }
+            activity?.window?.let { win ->
+                val ic = WindowCompat.getInsetsController(win, view)
+                ic.show(WindowInsetsCompat.Type.systemBars())
+                ic.isAppearanceLightStatusBars = !darkTheme
+                ic.isAppearanceLightNavigationBars = !darkTheme
+            }
         }
+    }
+    LaunchedEffect(Unit) {
+        if (enter.value < 1f) enter.animateTo(1f, motion.hero())
+        if (appear.value < 1f) appear.animateTo(1f, tween(if (motion.minimal) 120 else 180))
+        HeroBounds.hidden = null
     }
 
     // Light up the screen for HDR photos; videos handle HDR on their own surface.
@@ -150,9 +267,13 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
     // Play the video on the page you land on; stop when you move to a photo.
     LaunchedEffect(current?.id, pager.isScrollInProgress) {
         if (pager.isScrollInProgress) return@LaunchedEffect
-        if (current != null && current.isVideo) player.load(current, null) else player.stop()
+        if (current != null && current.isVideo) {
+            if (player.uri != current.uri) player.load(current, null)
+        } else {
+            player.stop()
+        }
     }
-    LaunchedEffect(player.wantsPlay, chrome, current?.id) {
+    LaunchedEffect(player.wantsPlay, chrome, current?.id, app.details) {
         if (player.wantsPlay && chrome && current?.isVideo == true && app.details == null) {
             kotlinx.coroutines.delay(3000)
             if (player.wantsPlay && app.details == null) chrome = false
@@ -166,120 +287,253 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
     val fps = facts?.fps ?: 0f
     val videoHdr = facts?.let { DetailsReader.hdrLabel(it) }
 
-    BackHandler { onClose() }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val screen = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+        val aspectNow by rememberUpdatedState(
+            if (current?.isVideo == true && player.aspect > 0f && player.uri == current.uri) player.aspect else current?.aspect ?: 1f,
+        )
+        val closeAt = with(density) { 110.dp.toPx() }
+        val detailsAt = with(density) { 70.dp.toPx() }
 
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - dismiss * 0.85f))) {
-        HorizontalPager(
-            state = pager,
-            key = { items[it].id },
-            beyondViewportPageCount = 1,
-            pageSpacing = 16.dp,
-            userScrollEnabled = !zoomed,
-            modifier = Modifier.fillMaxSize(),
-        ) { page ->
-            val m = items[page]
-            val isCurrent = page == pager.currentPage && !pager.isScrollInProgress
-            val placeholder: @Composable () -> Unit = { Thumb(m, 640, Modifier.fillMaxSize(), contentScale = ContentScale.Fit, bg = Color.Transparent) }
-            if (m.isVideo) {
-                VideoSurface(player, current = isCurrent && player.uri == m.uri, placeholder = placeholder, onTap = { chrome = !chrome })
-            } else {
-                ZoomImage(
-                    uri = m.uri,
-                    animate = m.isGif || m.mime == "image/webp",
-                    placeholder = placeholder,
-                    onTap = { chrome = !chrome },
-                    onZoomed = { z -> zoomed = z; if (z) chrome = false },
-                    onHdr = { h -> hdrPages[m.id] = h },
-                    onDrag = { p -> dismiss = p },
-                    onDismiss = onClose,
-                )
+        // Where the current photo is right now, computed when drawing so animations never recompose the page.
+        fun live(): Frame {
+            val d = drag.value
+            val down = d.y.coerceAtLeast(0f)
+            val p = (down / (screen.height * 0.5f)).coerceIn(0f, 1f)
+            val b = back.value
+            val shrink = 1f - 0.28f * p - 0.12f * b
+            val move = Offset(d.x * if (down > 0f) 1f else 0.2f, if (d.y < 0f) d.y * 0.3f else d.y)
+            val full = Frame.full(screen, aspectNow, move, shrink, backdrop = (1f - p * 0.95f - b * 0.35f).coerceIn(0f, 1f))
+            val e = enter.value
+            val o = origin
+            return if (e < 1f && o != null) Frame.lerpFrame(Frame.cell(screen, aspectNow, o, corner), full, e) else full
+        }
+        val frame: () -> Frame = {
+            val c = closing
+            if (c != null) Frame.lerpFrame(c.first, c.second, closeT.value) else live()
+        }
+
+        fun requestClose() {
+            if (closing != null) return
+            textMode = false
+            scope.launch {
+                val m = items.getOrNull(pager.currentPage)
+                if (m != null && !zoomed && !motion.minimal && req.explicit.isEmpty()) {
+                    runCatching { app.reveal?.invoke(m.id) }
+                    withFrameNanos { }
+                    withFrameNanos { }
+                }
+                val target = m?.let { HeroBounds.get(it.id) }.takeIf { !zoomed && !motion.minimal && req.explicit.isEmpty() }
+                val start = live()
+                val end = if (target != null) {
+                    Frame.cell(screen, aspectNow, target, corner)
+                } else {
+                    start.copy(scale = start.scale * 0.9f, backdrop = 0f, alpha = 0f)
+                }
+                HeroBounds.hidden = if (target != null) m?.id?.let { HeroBounds.alias[it] ?: it } else null
+                closing = start to end
+                closeT.snapTo(0f)
+                closeT.animateTo(1f, if (target != null) motion.hero() else tween(170))
+                onClose()
             }
         }
 
-        val m = current
-        val showChrome = chrome && dismiss < 0.05f
-        AnimatedVisibility(showChrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
-            Box(
-                Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))),
-            ) {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
-                    if (m != null) {
-                        val z = Instant.ofEpochMilli(m.taken).atZone(ZoneId.systemDefault())
-                        Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                            Text(titleFmt.format(z), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("${timeFmt.format(z)} · ${m.bucket}", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+        fun endDrag() {
+            val d = drag.value
+            val now = items.getOrNull(pager.currentPage)
+            when {
+                d.y > closeAt -> requestClose()
+                d.y < -detailsAt && now != null && now.external == null -> {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    app.details = now
+                    scope.launch { drag.animateTo(Offset.Zero, spring(stiffness = Spring.StiffnessMedium)) }
+                }
+                else -> scope.launch { drag.animateTo(Offset.Zero, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)) }
+            }
+        }
+
+        PredictiveBackHandler(enabled = closing == null && !textMode && app.details == null) { progress ->
+            try {
+                progress.collect { e -> back.snapTo(e.progress) }
+                requestClose()
+            } catch (e: CancellationException) {
+                scope.launch { back.animateTo(0f) }
+                throw e
+            }
+        }
+        BackHandler(enabled = textMode) { textMode = false }
+
+        val dragging by remember { derivedStateOf { drag.value != Offset.Zero || back.value > 0f } }
+        val entered by remember { derivedStateOf { enter.value >= 1f } }
+        val chromeAlpha: () -> Float = {
+            if (closing != null) 0f else {
+                val d = drag.value
+                val p = (abs(d.y) / (screen.height * 0.15f)).coerceIn(0f, 1f)
+                (enter.value * appear.value * (1f - p) * (1f - back.value * 2f)).coerceIn(0f, 1f)
+            }
+        }
+
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer { alpha = appear.value }
+                .drawBehind { drawRect(Color.Black.copy(alpha = frame().backdrop)) },
+        ) {
+            HorizontalPager(
+                state = pager,
+                key = { items[it].id },
+                beyondViewportPageCount = 1,
+                pageSpacing = 16.dp,
+                userScrollEnabled = !zoomed && !textMode && !dragging && closing == null,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                val m = items[page]
+                val isCur = page == pager.currentPage
+                val placeholder: @Composable () -> Unit = { Thumb(m, 640, Modifier.fillMaxSize(), contentScale = ContentScale.Fit, bg = Color.Transparent) }
+                Box(Modifier.fillMaxSize().then(if (isCur) Modifier.heroTransform(frame) else Modifier)) {
+                    if (m.isVideo) {
+                        Box(
+                            Modifier.fillMaxSize()
+                                .verticalDrag(enabled = isCur && closing == null, onDelta = { d -> scope.launch { drag.snapTo(drag.value + d) } }, onEnd = { endDrag() })
+                                .pointerInput(m.id) {
+                                    detectTapGestures(
+                                        onTap = { chrome = !chrome },
+                                        onDoubleTap = { p ->
+                                            val now = player.player.currentPosition
+                                            player.seek(if (p.x < size.width / 2f) now - 10_000 else now + 10_000, exact = false)
+                                        },
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            placeholder()
+                            val err = player.error
+                            if (isCur && err != null && player.uri == m.uri) VideoError(err)
                         }
-                        val hdrTag = if (m.isVideo) videoHdr else if (hdr) "HDR" else null
-                        if (hdrTag != null) SmallTag(hdrTag, Modifier.padding(end = 4.dp), bg = Color.White.copy(alpha = 0.2f))
-                        if (!req.fromTrash) {
-                            Box {
-                                IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = Color.White) }
-                                ViewerMenu(menu, m, sources[m.id]?.url, actions, onDismiss = { menu = false }, onDetails = { app.details = m })
+                    } else {
+                        ZoomImage(
+                            uri = m.uri,
+                            animate = m.isGif || m.mime == "image/webp",
+                            placeholder = placeholder,
+                            onTap = { chrome = !chrome },
+                            onZoomed = { z -> zoomed = z; if (z) chrome = false },
+                            onHdr = { h -> hdrPages[m.id] = h },
+                            onDragDelta = { d -> scope.launch { drag.snapTo(drag.value + d) } },
+                            onDragEnd = { endDrag() },
+                            interactive = !textMode && closing == null,
+                            resetKey = if (isCur) resetZoom else 0,
+                        )
+                    }
+                }
+            }
+
+            // The one video surface, laid over the current page when it is a video.
+            val cur = current
+            if (cur != null && cur.isVideo) {
+                val settled = !pager.isScrollInProgress && player.uri == cur.uri && entered && closing == null && !dragging
+                LaunchedEffect(settled) {
+                    if (!settled) {
+                        player.firstFrame = false
+                    } else if (!player.player.playWhenReady) {
+                        // A paused video needs one frame drawn on the new surface.
+                        player.player.seekTo(player.player.currentPosition)
+                    }
+                }
+                Box(Modifier.fillMaxSize().heroTransform(frame), contentAlignment = Alignment.Center) {
+                    val ar = aspectNow
+                    Box(if (ar > 0f) Modifier.fillMaxWidth().aspectRatio(ar, matchHeightConstraintsFirst = ar < screen.width / screen.height) else Modifier.fillMaxSize()) {
+                        SharedVideoSurface(player, visible = settled, modifier = Modifier.fillMaxSize())
+                    }
+                    // Until the first frame arrives, the thumbnail stays on top so there is never a black flash.
+                    if (!settled || !player.firstFrame) Thumb(cur, 640, Modifier.fillMaxSize(), contentScale = ContentScale.Fit, bg = Color.Transparent)
+                }
+            }
+
+            if (textMode && cur != null && !cur.isVideo) {
+                TextOverlay(cur) { textMode = false }
+            }
+
+            val m = current
+            val showChrome = chrome && !textMode
+            AnimatedVisibility(showChrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = chromeAlpha() }) {
+                Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))) {
+                    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { requestClose() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
+                        if (m != null) {
+                            val z = Instant.ofEpochMilli(m.taken).atZone(ZoneId.systemDefault())
+                            Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                                Text(titleFmt.format(z), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text("${timeFmt.format(z)} · ${m.bucket}", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            }
+                            val src = sources[m.id]
+                            if (m.isScreenshot && src?.pkg != null) SourceChip(src.pkg, src.url)
+                            val hdrTag = if (m.isVideo) videoHdr else if (hdr) "HDR" else null
+                            if (hdrTag != null) SmallTag(hdrTag, Modifier.padding(start = 6.dp), bg = Color.White.copy(alpha = 0.2f))
+                            if (!req.fromTrash && m.external == null) {
+                                val imp = m.id in important
+                                IconButton(onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    actions.important(listOf(m), !imp)
+                                }) {
+                                    Icon(
+                                        if (imp) Icons.Rounded.Star else Icons.Rounded.StarOutline,
+                                        if (imp) "Remove from important" else "Mark as important",
+                                        tint = if (imp) Color(0xFFFFC94A) else Color.White,
+                                    )
+                                }
+                            }
+                            if (!req.fromTrash) {
+                                Box {
+                                    IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = Color.White) }
+                                    ViewerMenu(menu, m, sources[m.id]?.url, actions, onDismiss = { menu = false }, onDetails = { app.details = m })
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Where a screenshot came from.
-        val src = m?.let { sources[it.id] }
-        AnimatedVisibility(
-            showChrome && m != null && m.isScreenshot && src?.pkg != null,
-            enter = fadeIn(), exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (m?.isVideo == true) 200.dp else 96.dp),
-        ) {
-            if (m != null && src != null) SourceChip(src.pkg, src.url)
-        }
-
-        if (m != null && m.isVideo) {
-            CenterPlay(player, showChrome && player.uri == m.uri, Modifier.align(Alignment.Center))
-            AnimatedVisibility(
-                showChrome && player.uri == m.uri,
-                enter = fadeIn(), exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 76.dp),
-            ) {
-                VideoControls(
-                    player, m, fps,
-                    onTrim = { app.editor = EditReq(m, trim = true) },
-                    onRotate = {
-                        landscape = !landscape
-                        activity?.requestedOrientation =
-                            if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                    },
-                )
+            if (m != null && m.isVideo) {
+                CenterPlay(player, showChrome && player.uri == m.uri && !dragging, Modifier.align(Alignment.Center).graphicsLayer { alpha = chromeAlpha() })
+                AnimatedVisibility(
+                    showChrome && player.uri == m.uri,
+                    enter = fadeIn(), exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 76.dp).graphicsLayer { alpha = chromeAlpha() },
+                ) {
+                    VideoControls(
+                        player, m, fps,
+                        onRotate = {
+                            landscape = !landscape
+                            activity?.requestedOrientation =
+                                if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        },
+                    )
+                }
             }
-        }
 
-        AnimatedVisibility(
-            showChrome,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
-                    .navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+            AnimatedVisibility(
+                showChrome,
+                enter = fadeIn() + slideInVertically { it / 2 },
+                exit = fadeOut() + slideOutVertically { it / 2 },
+                modifier = Modifier.align(Alignment.BottomCenter).graphicsLayer { alpha = chromeAlpha() },
             ) {
-                if (m == null) return@Row
-                if (req.fromTrash) {
-                    BarAction(Icons.Rounded.RestoreFromTrash, "Restore") { actions.restore(listOf(m)) { onClose() } }
-                    BarAction(Icons.Rounded.DeleteForever, "Delete for good") { confirmForever = true }
-                } else if (m.external != null) {
-                    BarAction(Icons.Rounded.Share, "Share") { actions.share(listOf(m)) }
-                    if (!m.isVideo) BarAction(Icons.Rounded.Edit, "Edit") { app.editor = EditReq(m, trim = false) }
-                    BarAction(Icons.Rounded.Info, "Details") { app.details = m }
-                } else {
-                    val imp = m.id in important
-                    BarAction(Icons.Rounded.Share, "Share") { actions.share(listOf(m)) }
-                    BarAction(Icons.Rounded.Edit, if (m.isVideo) "Trim" else "Edit") { app.editor = EditReq(m, trim = m.isVideo) }
-                    BarAction(if (imp) Icons.Rounded.Star else Icons.Rounded.StarOutline, if (imp) "Important" else "Mark", tint = if (imp) Color(0xFFFFC94A) else Color.White) {
-                        actions.important(listOf(m), !imp)
+                Row(
+                    Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
+                        .navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    if (m == null) return@Row
+                    if (req.fromTrash) {
+                        BarAction(Icons.Rounded.RestoreFromTrash, "Restore") { actions.restore(listOf(m)) { onClose() } }
+                        BarAction(Icons.Rounded.DeleteForever, "Delete for good") { confirmForever = true }
+                    } else {
+                        BarAction(Icons.Rounded.Share, "Share") { actions.share(listOf(m)) }
+                        BarAction(Icons.Rounded.Edit, "Edit") { app.editor = EditReq(m, trim = m.isVideo) }
+                        if (!m.isVideo) BarAction(Icons.Rounded.TextFields, "Text") {
+                            resetZoom++
+                            textMode = true
+                        }
+                        if (m.external == null) BarAction(Icons.Rounded.Delete, "Delete") { actions.trash(listOf(m)) }
                     }
-                    BarAction(Icons.Rounded.Info, "Details") { app.details = m }
-                    BarAction(Icons.Rounded.Delete, "Delete") { actions.trash(listOf(m)) }
                 }
             }
         }
@@ -301,7 +555,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
 @Composable
 private fun BarAction(icon: ImageVector, label: String, tint: Color = Color.White, onClick: () -> Unit) {
     Column(
-        Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(icon, label, tint = tint)
@@ -309,32 +563,31 @@ private fun BarAction(icon: ImageVector, label: String, tint: Color = Color.Whit
     }
 }
 
+/** Where a screenshot came from: the app's icon and the website (or app name), in the top bar. */
 @Composable
 private fun SourceChip(pkg: String?, url: String?) {
     val ctx = LocalContext.current
     val icon by produceState(Apps.icon(ctx, null), pkg) { value = withContext(Dispatchers.IO) { Apps.icon(ctx, pkg) } }
     val label = remember(pkg) { Apps.label(ctx, pkg) }
-    val site = Links.clean(url)
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = Color.Black.copy(alpha = 0.55f),
-        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(enabled = site != null) { Links.openable(url)?.let { Share.openLink(ctx, it) } },
-    ) {
-        Row(Modifier.padding(start = 6.dp, end = 14.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            val img = icon
-            if (img != null) Image(img, null, Modifier.size(26.dp).clip(CircleShape))
-            else Icon(Icons.Rounded.Language, null, tint = Color.White, modifier = Modifier.size(26.dp))
-            GapW(8.dp)
-            Text(
-                if (site != null) "$label · $site" else label,
-                color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 260.dp),
-            )
-            if (site != null) {
-                GapW(6.dp)
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, "Open website", tint = Color.White, modifier = Modifier.size(16.dp))
+    val site = Links.domain(url)
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))
+            .clickable {
+                val link = Links.openable(url)
+                if (link != null) Share.openLink(ctx, link) else Toasts.show("Taken in $label")
             }
-        }
+            .padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val img = icon
+        if (img != null) Image(img, null, Modifier.size(22.dp).clip(CircleShape))
+        else Icon(Icons.Rounded.Language, null, tint = Color.White, modifier = Modifier.size(22.dp))
+        GapW(6.dp)
+        Text(
+            site ?: label,
+            color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 104.dp),
+        )
     }
 }
 

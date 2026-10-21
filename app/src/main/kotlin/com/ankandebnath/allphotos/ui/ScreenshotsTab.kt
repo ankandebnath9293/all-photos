@@ -72,9 +72,10 @@ class ShotGroup(val key: String, val title: String, val items: List<Media>, val 
 @Composable
 fun BoxScope.ExpiryBadge(m: Media) {
     val ctx = LocalContext.current
-    val s by remember { Prefs.get(ctx) }.settings.collectAsState()
+    val prefs = remember { Prefs.get(ctx) }
+    val s by prefs.settings.collectAsState()
     val important by remember { Db.get(ctx).important }.collectAsState()
-    if (!s.shotAutoTrash || !m.isScreenshot || m.id in important) return
+    if (!s.shotAutoTrash || !m.isScreenshot || m.id in important || m.taken < prefs.rulesStart) return
     val left = Rules.daysLeft(m.taken, System.currentTimeMillis(), s.shotDays)
     if (left in 0..7) {
         SmallTag(
@@ -116,7 +117,7 @@ fun ScreenshotsTab(lib: Library, app: AppState, actions: Actions, state: LazyGri
     val segments = listOf("Recent", "Apps", "Websites", "Important")
     val sub = buildString {
         append("${shots.size} · ${Fmt.size(shots.sumOf { it.size })}")
-        if (s.shotAutoTrash) append(" · cleaned after ${s.shotDays} days")
+        if (s.shotAutoTrash) append(" · new ones cleaned after ${s.shotDays} days")
     }
     val header: @Composable () -> Unit = {
         Column {

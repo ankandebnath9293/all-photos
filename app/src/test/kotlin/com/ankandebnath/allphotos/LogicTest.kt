@@ -43,7 +43,7 @@ class RulesTest {
         assertEquals(Chat.TELEGRAM, Rules.chatOf("Pictures/Telegram/"))
         assertEquals(Chat.TELEGRAM, Rules.chatOf("Movies/Telegram/"))
         assertNull(Rules.chatOf("DCIM/Camera/"))
-        assertNull(Rules.chatOf("Pictures/Messenger/"))
+        assertNull(Rules.chatOf("Pictures/Instagram/"))
     }
 
     @Test fun dueAfterThirtyDaysUnlessImportant() {
@@ -51,8 +51,35 @@ class RulesTest {
         val day = Rules.DAY_MS
         data class F(val id: Long, val t: Long)
         val files = listOf(F(1, now - 31 * day), F(2, now - 29 * day), F(3, now - 30 * day), F(4, now - 90 * day), F(5, 0))
-        val due = Rules.due(files, now, 30, setOf(4L), { it.id }, { it.t }).map { it.id }
+        val due = Rules.due(files, now, 30, setOf(4L), 0L, { it.id }, { it.t }).map { it.id }
         assertEquals(listOf(1L, 3L), due)
+    }
+
+    @Test fun nothingFromBeforeInstallIsCounted() {
+        val day = Rules.DAY_MS
+        val installed = 1_800_000_000_000L
+        val now = installed + 40 * day
+        data class F(val id: Long, val t: Long)
+        // 1 and 2 were taken before the app was installed; 3 after, and is old enough.
+        val files = listOf(F(1, installed - 400 * day), F(2, installed - 1), F(3, installed + 2 * day), F(4, installed + 20 * day))
+        assertEquals(listOf(3L), Rules.due(files, now, 30, emptySet(), installed, { it.id }, { it.t }).map { it.id })
+    }
+
+    @Test fun startOfDay() {
+        val zone = java.time.ZoneId.of("Asia/Dhaka")
+        val installedAt = java.time.ZonedDateTime.of(2026, 10, 22, 0, 30, 0, 0, zone).toInstant().toEpochMilli()
+        val start = Rules.startOfDay(installedAt, zone)
+        assertEquals(java.time.ZonedDateTime.of(2026, 10, 22, 0, 0, 0, 0, zone).toInstant().toEpochMilli(), start)
+    }
+
+    @Test fun facebookAndMessengerFolders() {
+        assertEquals(Chat.FACEBOOK, Rules.chatOf("Pictures/Messenger/"))
+        assertEquals(Chat.FACEBOOK, Rules.chatOf("Pictures/Facebook/"))
+        assertEquals(Chat.FACEBOOK, Rules.chatOf("DCIM/Facebook/"))
+        assertEquals(Chat.FACEBOOK, Rules.chatOf("Movies/Messenger/"))
+        assertEquals(Chat.FACEBOOK, Rules.chatOf("Download/", owner = "com.facebook.orca"))
+        assertNull(Rules.chatOf("Pictures/Screenshots/", owner = "com.facebook.orca"))
+        assertNull(Rules.chatOf("DCIM/Camera/", owner = "com.google.android.GoogleCamera"))
     }
 
     @Test fun daysLeftRoundsUp() {
@@ -285,5 +312,122 @@ class EditMathTest {
 class ZoneSanity {
     @Test fun systemZoneWorks() {
         assertTrue(Timeline.dayOf(0, ZoneId.of("Asia/Dhaka")).year == 1970)
+    }
+}
+
+class DocsTest {
+    @Test fun receipts() {
+        val t = "STAR KABAB\nItem Qty Price\nChicken Biryani 1 350.00\nBorhani 2 120.00\nSub Total 470.00\nVAT 5% 23.50\nGrand Total 493.50\nCash 500.00\nChange 6.50\nThank you for coming"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.RECEIPT, com.ankandebnath.allphotos.logic.Docs.classify(t, emptyList(), false))
+        val bkash = "Send Money Successful\nAmount ৳1,000.00\nCharge ৳5.00\nTrxID BK7XY12AB\nReference rent\nBalance ৳2,340.00"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.RECEIPT, com.ankandebnath.allphotos.logic.Docs.classify(bkash, emptyList(), true))
+    }
+
+    @Test fun paymentCards() {
+        val t = "BRAC BANK\nVISA Debit Platinum\n4567 1234 5678 9012\nVALID THRU 08/29\nCARDHOLDER NAME"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.PAYMENT, com.ankandebnath.allphotos.logic.Docs.classify(t, emptyList(), false))
+    }
+
+    @Test fun identityAndTickets() {
+        val id = "People's Republic of Bangladesh\nGovernment of the People's Republic\nNational ID Card\nName\nDate of Birth 10 Nov 2002\nID NO 1234567890"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.IDENTITY, com.ankandebnath.allphotos.logic.Docs.classify(id, emptyList(), false))
+        val ticket = "ENTRY PASS\nDhaka Music Festival\nVenue: ICCB Hall 4\nGate B  Row F  Seat 12\nAdmit one"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.EVENT, com.ankandebnath.allphotos.logic.Docs.classify(ticket, emptyList(), false))
+    }
+
+    @Test fun menusNotesAndBooks() {
+        val menu = "KFC Tuesday Special\n20 pcs of chicken\n8pc hot & crispy\nCombo meal with fries\nOffer price"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.MENU, com.ankandebnath.allphotos.logic.Docs.classify(menu, emptyList(), false))
+        val notes = "Marketing 201\nChapter 4 segmentation\nTargeting and positioning\nQuiz on Sunday"
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.NOTES, com.ankandebnath.allphotos.logic.Docs.classify(notes, emptyList(), false))
+        assertEquals(com.ankandebnath.allphotos.logic.DocKind.BOOKS, com.ankandebnath.allphotos.logic.Docs.classify("Chapter one", listOf("Book"), false))
+    }
+
+    @Test fun ordinaryPhotosAreNotDocuments() {
+        assertNull(com.ankandebnath.allphotos.logic.Docs.classify("", listOf("Sky", "Tree"), false))
+        assertNull(com.ankandebnath.allphotos.logic.Docs.classify("EXIT", listOf("Building"), false))
+        // A chat screenshot is not a document.
+        assertNull(com.ankandebnath.allphotos.logic.Docs.classify("Tahsan\nkal dekha hobe\nok bhai\n10:42 PM", emptyList(), true))
+    }
+}
+
+class SmartTest {
+    @Test fun phonesLinksAndEmails() {
+        val found = com.ankandebnath.allphotos.logic.Smart.find("Call +880 1712-345678 or mail hi@motionblurmedia.agency, see motionblurmedia.agency/work")
+        val kinds = found.map { it.kind }
+        assertTrue(com.ankandebnath.allphotos.logic.SmartAction.Kind.PHONE in kinds)
+        assertTrue(com.ankandebnath.allphotos.logic.SmartAction.Kind.EMAIL in kinds)
+        assertTrue(com.ankandebnath.allphotos.logic.SmartAction.Kind.LINK in kinds)
+        assertEquals("+8801712345678", com.ankandebnath.allphotos.logic.Smart.dialable(found.first { it.kind == com.ankandebnath.allphotos.logic.SmartAction.Kind.PHONE }.value))
+        assertEquals("motionblurmedia.agency/work", found.first { it.kind == com.ankandebnath.allphotos.logic.SmartAction.Kind.LINK }.value)
+    }
+
+    @Test fun datesAndPricesAreNotPhones() {
+        val found = com.ankandebnath.allphotos.logic.Smart.find("Paid on 21/10/2026 total 1,250.00")
+        assertTrue(found.none { it.kind == com.ankandebnath.allphotos.logic.SmartAction.Kind.PHONE })
+    }
+}
+
+class LookTest {
+    private fun run(l: com.ankandebnath.allphotos.logic.Look, r: Float, g: Float, b: Float, u: Float = 0.5f, v: Float = 0.5f): FloatArray {
+        val out = FloatArray(3)
+        com.ankandebnath.allphotos.logic.Look.apply(l, r, g, b, u, v, out)
+        return out
+    }
+
+    @Test fun neutralLeavesPixelsAlone() {
+        val o = run(com.ankandebnath.allphotos.logic.Look(), 0.3f, 0.6f, 0.9f)
+        assertEquals(0.3f, o[0], 1e-5f); assertEquals(0.6f, o[1], 1e-5f); assertEquals(0.9f, o[2], 1e-5f)
+    }
+
+    @Test fun vividIsMoreColourfulAndKeepsGreys() {
+        val vivid = com.ankandebnath.allphotos.logic.Look.FILTERS.first { it.first == "Vivid" }.second
+        val o = run(vivid, 0.6f, 0.4f, 0.3f)
+        assertTrue(o[0] - o[2] > 0.6f - 0.3f)
+        val grey = run(vivid, 0.5f, 0.5f, 0.5f)
+        assertEquals(grey[0], grey[1], 1e-4f); assertEquals(grey[1], grey[2], 1e-4f)
+        // Black and white stay black and white.
+        val black = run(vivid, 0f, 0f, 0f)
+        assertTrue(black.all { it < 0.02f })
+    }
+
+    @Test fun monoFiltersRemoveColour() {
+        for (name in listOf("Mono", "Noir")) {
+            val l = com.ankandebnath.allphotos.logic.Look.FILTERS.first { it.first == name }.second
+            val o = run(l, 0.8f, 0.2f, 0.1f)
+            assertEquals(o[0], o[1], 1e-4f); assertEquals(o[1], o[2], 1e-4f)
+        }
+        val silver = com.ankandebnath.allphotos.logic.Look.FILTERS.first { it.first == "Silvertone" }.second
+        val s = run(silver, 0.5f, 0.5f, 0.5f)
+        assertTrue(s[2] > s[0])
+    }
+
+    @Test fun slidersMoveTheRightWay() {
+        assertTrue(run(com.ankandebnath.allphotos.logic.Look(brightness = 0.5f), 0.4f, 0.4f, 0.4f)[0] > 0.4f)
+        assertTrue(run(com.ankandebnath.allphotos.logic.Look(brightness = -0.5f), 0.4f, 0.4f, 0.4f)[0] < 0.4f)
+        assertTrue(run(com.ankandebnath.allphotos.logic.Look(contrast = 0.5f), 0.8f, 0.8f, 0.8f)[0] > 0.8f)
+        assertTrue(run(com.ankandebnath.allphotos.logic.Look(contrast = 0.5f), 0.2f, 0.2f, 0.2f)[0] < 0.2f)
+        assertTrue(run(com.ankandebnath.allphotos.logic.Look(highlights = -0.8f), 0.9f, 0.9f, 0.9f)[0] < 0.9f)
+        assertTrue(run(com.ankandebnath.allphotos.logic.Look(shadows = 0.8f), 0.1f, 0.1f, 0.1f)[0] > 0.1f)
+        val warm = run(com.ankandebnath.allphotos.logic.Look(warmth = 1f), 0.5f, 0.5f, 0.5f)
+        assertTrue(warm[0] > warm[2])
+        val centre = run(com.ankandebnath.allphotos.logic.Look(vignette = 1f), 0.5f, 0.5f, 0.5f, 0.5f, 0.5f)
+        val corner = run(com.ankandebnath.allphotos.logic.Look(vignette = 1f), 0.5f, 0.5f, 0.5f, 0f, 0f)
+        assertEquals(0.5f, centre[0], 1e-4f)
+        assertTrue(corner[0] < 0.3f)
+    }
+
+    @Test fun everyFilterStaysInRange() {
+        for ((_, l) in com.ankandebnath.allphotos.logic.Look.FILTERS) {
+            for (c in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+                val o = run(l, c, 1f - c, c * 0.5f, 0.1f, 0.9f)
+                assertTrue(o.all { it in 0f..1f })
+            }
+        }
+    }
+
+    @Test fun shaderHasEveryUniform() {
+        for (n in com.ankandebnath.allphotos.logic.Look.NAMES) assertTrue(n, com.ankandebnath.allphotos.logic.Look.SHADER.contains("uniform float $n;"))
+        assertEquals(com.ankandebnath.allphotos.logic.Look.NAMES.size, com.ankandebnath.allphotos.logic.Look().uniforms().size)
     }
 }

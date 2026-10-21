@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BurstMode
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Icon
@@ -62,6 +63,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -118,9 +121,17 @@ fun MediaGrid(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     top: (@Composable () -> Unit)? = null,
     badge: (@Composable BoxScope.(Media) -> Unit)? = null,
+    /** Photos on top of a stack of similar shots, with how many are in the stack. */
+    stacks: Map<Long, Int> = emptyMap(),
+    /** Space under the status bar, so the fast-scroll handle never hides behind it. */
+    topInset: androidx.compose.ui.unit.Dp = 0.dp,
+    /** Receives a function that scrolls a photo into view (used when the viewer closes). */
+    registerReveal: ((suspend (Long) -> Unit) -> Unit)? = null,
     onOpen: (Int) -> Unit,
 ) {
     val byMonth = cols >= 5
+    val motion = LocalMotion.current
+    val haptics = LocalHapticFeedback.current
     val rows by produceState(initialValue = emptyList<GridRow>(), items, byMonth, headers) {
         value = withContext(Dispatchers.Default) {
             if (headers) {
@@ -132,6 +143,20 @@ fun MediaGrid(
     }
     val offset = if (top != null) 1 else 0
     val density = LocalDensity.current
+    val latestRows by rememberUpdatedState(rows)
+    LaunchedEffect(registerReveal, state) {
+        registerReveal?.invoke { id ->
+            val target = HeroBounds.alias[id] ?: id
+            val idx = latestRows.indexOfFirst { it is GridRow.Cell && it.id == target }
+            if (idx >= 0) {
+                val gi = idx + offset
+                val info = state.layoutInfo
+                val vis = info.visibleItemsInfo.firstOrNull { it.index == gi }
+                val fully = vis != null && vis.offset.y >= info.viewportStartOffset + 40 && vis.offset.y + vis.size.height <= info.viewportEndOffset - 160
+                if (!fully) state.scrollToItem(gi, -(info.viewportSize.height / 3))
+            }
+        }
+    }
     val scope = rememberCoroutineScope()
     var autoScroll by remember { mutableFloatStateOf(0f) }
     val currentCols by rememberUpdatedState(cols)
@@ -194,6 +219,7 @@ fun MediaGrid(
                         onDragStart = { p ->
                             val i = itemAt(p)
                             if (i != null) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 start = i
                                 current = i
                                 base = selection.ids
@@ -214,6 +240,7 @@ fun MediaGrid(
                             }
                             val i = itemAt(change.position)
                             if (i != null && i != current) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 current = i
                                 val range = minOf(start, i)..maxOf(start, i)
                                 val ids = range.map { items[it].id }
@@ -243,17 +270,26 @@ fun MediaGrid(
                                 selected = m.id in selection.ids,
                                 selecting = selection.active,
                                 important = m.id in important,
+                                stack = stacks[m.id] ?: 0,
                                 badge = badge,
-                                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                                modifier = Modifier.animateItem(fadeInSpec = null, placementSpec = motion.placement, fadeOutSpec = null),
                                 onClick = { if (selection.active) selection.toggle(m.id) else onOpen(r.index) },
-                                onLongClick = { selection.set(listOf(m.id), true) },
+                                onLongClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    selection.set(listOf(m.id), true)
+                                },
                             )
                         }
                     }
                 }
             }
         }
-        if (items.size > 80) FastScroller(state, items, rows, offset, Modifier.align(Alignment.CenterEnd).padding(contentPadding))
+        if (items.size > 80) {
+            FastScroller(
+                state, items, rows, offset,
+                Modifier.align(Alignment.CenterEnd).padding(top = topInset + 12.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
+            )
+        }
     }
 }
 
@@ -289,6 +325,7 @@ private fun Cell(
     selected: Boolean,
     selecting: Boolean,
     important: Boolean,
+    stack: Int,
     badge: (@Composable BoxScope.(Media) -> Unit)?,
     modifier: Modifier,
     onClick: () -> Unit,
@@ -300,12 +337,15 @@ private fun Cell(
     Box(
         modifier
             .aspectRatio(1f)
+            .heroSource(m.id)
+            .graphicsLayer { alpha = if (HeroBounds.hidden == m.id) 0f else 1f }
             .background(if (selected) c.secondaryContainer else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(Modifier.fillMaxSize().padding(inset).clip(RoundedCornerShape(corner))) {
             Thumb(m, px, Modifier.fillMaxSize())
             if (m.isVideo) VideoBadge(m.durationMs, Modifier.align(Alignment.BottomEnd).padding(5.dp))
+            if (stack > 1) StackBadge(stack, Modifier.align(Alignment.TopEnd).padding(5.dp))
             if (important) StarBadge(Modifier.align(Alignment.TopStart).padding(5.dp))
             badge?.invoke(this, m)
         }
@@ -319,6 +359,19 @@ private fun Cell(
                     .then(if (selected) Modifier.background(c.onPrimary, CircleShape) else Modifier),
             )
         }
+    }
+}
+
+/** "4" with a stack icon, on a photo that has similar shots tucked under it. */
+@Composable
+private fun StackBadge(n: Int, modifier: Modifier) {
+    Row(
+        modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.BurstMode, null, tint = Color.White, modifier = Modifier.size(13.dp))
+        GapW(3.dp)
+        Text("$n", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
     }
 }
 

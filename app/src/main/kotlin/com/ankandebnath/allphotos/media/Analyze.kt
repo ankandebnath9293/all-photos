@@ -81,6 +81,22 @@ object Analyze {
         r.textBlocks.joinToString("\n") { it.text }
     }.onFailure { Log.w(TAG, "Text reading failed", it) }.getOrNull()
 
+    /** One line of text found in a picture, with where it sits (in the picture's pixels). */
+    class Line(val text: String, val box: android.graphics.Rect, val block: Int)
+
+    /** Every line of text in a picture, in reading order, with positions. */
+    fun lines(b: Bitmap): List<Line>? = runCatching {
+        val r = Tasks.await(recognizer.process(InputImage.fromBitmap(b, 0)), 30, TimeUnit.SECONDS)
+        val out = ArrayList<Line>()
+        r.textBlocks.forEachIndexed { bi, block ->
+            for (l in block.lines) {
+                val box = l.boundingBox ?: continue
+                out += Line(l.text, box, bi)
+            }
+        }
+        out
+    }.onFailure { Log.w(TAG, "Text reading failed", it) }.getOrNull()
+
     fun labels(b: Bitmap): List<String>? = runCatching {
         Tasks.await(labeler.process(InputImage.fromBitmap(b, 0)), 30, TimeUnit.SECONDS).map { it.text }
     }.onFailure { Log.w(TAG, "Labelling failed", it) }.getOrNull()

@@ -11,8 +11,8 @@ android {
         applicationId = "com.ankandebnath.allphotos"
         minSdk = 35
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         ndk {
             // The phone is arm64; x86_64 is only there so the emulator tests can run the same APK.
             abiFilters += listOf("arm64-v8a", "x86_64")

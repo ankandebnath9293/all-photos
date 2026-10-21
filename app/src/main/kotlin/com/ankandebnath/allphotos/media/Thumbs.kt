@@ -37,7 +37,12 @@ object Thumbs {
 
     private fun key(m: Media, px: Int) = "${m.id}:${m.modified}:$px"
 
-    fun cached(m: Media, px: Int): ImageBitmap? = cache.get(key(m, px)) ?: if (px != 192) cache.get(key(m, 192)) else null
+    /** The exact size if cached, otherwise the sharpest smaller one (so the viewer opens on a picture, not a blank). */
+    fun cached(m: Media, px: Int): ImageBitmap? {
+        cache.get(key(m, px))?.let { return it }
+        for (b in listOf(640, 400, 288, 192)) if (b != px) cache.get(key(m, b))?.let { return it }
+        return null
+    }
 
     suspend fun load(ctx: Context, m: Media, px: Int): ImageBitmap? {
         cache.get(key(m, px))?.let { return it }
