@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">All Photos</string>
+    <string name="watch_label">All Photos screenshot source</string>
+    <string name="watch_summary">Remembers which app and website were open when you take a screenshot.</string>
+    <string name="watch_description">All Photos notes the app on screen and, in browsers, the address shown in the address bar, at the moment you take a screenshot. It is saved only on this phone with that screenshot and never leaves the device. Nothing else is read or kept.</string>
+</resources>

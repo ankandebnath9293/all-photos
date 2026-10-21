@@ -1,0 +1,112 @@
+name: Build All Photos APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest 2>&1 | tee build.log
+      - name: Build APKs
+        run: |
+          set -o pipefail
+          gradle --no-daemon assembleRelease assembleDebug 2>&1 | tee -a build.log
+      - name: Publish the build log when something fails
+        if: failure()
+        run: |
+          mkdir logout && grep -E "^e: |^w: .*(error|unresolved)|What went wrong|FAILED|Exception|expected:|but was|Could not (find|resolve)" -A3 build.log | head -600 > logout/errors.txt || true
+          tail -300 build.log > logout/tail.txt
+          cp -r app/build/reports/tests logout/ 2>/dev/null || true
+          cd logout
+          git init -q -b buildlog
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -qm "Failed build ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" buildlog
+      - name: Collect APKs
+        run: |
+          mkdir apk
+          cp app/build/outputs/apk/release/app-release.apk apk/AllPhotos.apk
+          cp app/build/outputs/apk/debug/app-debug.apk apk/AllPhotos-debug.apk
+          ls -la apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AllPhotos-apk
+          path: apk/
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: AllPhotos-apk
+          path: apk
+      - name: Make test photos and videos
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg imagemagick libheif-examples libheif-plugin-x265 >/dev/null 2>&1 || sudo apt-get install -y -qq ffmpeg imagemagick >/dev/null
+          bash scripts/fixtures.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run app in emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash scripts/smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: shots/
+
+  publish:
+    needs: [build, smoke]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: Push results to the builds branch
+        run: |
+          cd out
+          [ -f screenshots/logcat.txt ] && grep -E "AllPhotos|ALLPHOTOS|AndroidRuntime|FATAL|allphotos" screenshots/logcat.txt | tail -1500 > screenshots/app-log.txt || true
+          rm -f screenshots/logcat.txt
+          echo "Built from ${{ github.sha }} (smoke test: ${{ needs.smoke.result }})" > README.md
+          git init -q -b builds
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -qm "Build ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" builds
