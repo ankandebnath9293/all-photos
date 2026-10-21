@@ -27,7 +27,7 @@ tapText() {
   set -- $b
   adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
 }
-open() { adb shell am start -S -W -n $ACT --ez skip true --ei seen 1 --ez dynamic false "$@" >/dev/null; }
+open() { adb shell am start -S -W -n $ACT --ez skip true --ei seen 999 --ez dynamic false "$@" >/dev/null; }
 
 adb shell settings put global hide_error_dialogs 1
 # The emulator's "Viewing full screen" tip has a bug that restarts System UI; mark it as already seen.
@@ -92,7 +92,7 @@ for i in $(seq 1 60); do
   if adb logcat -d -s ALLPHOTOS_SELFTEST:I | grep -q "index="; then break; fi
   sleep 3
 done
-adb logcat -d -s ALLPHOTOS_SELFTEST:I | tail -40
+adb logcat -d -s ALLPHOTOS_SELFTEST:I | tee shots/selftest.txt | tail -40
 line=$(adb logcat -d -s ALLPHOTOS_SELFTEST:I | grep -E "lib=.*index=" | tail -1)
 echo "Self test: $line"
 for part in lib db ocr textlines shader bake docs labels hash similar decode details frame trim videofilter edit trash restore rules notify index; do
@@ -248,5 +248,5 @@ crashnote debug
 if grep -v "IN SYSTEM PROCESS" shots/logcat.txt | grep -A 25 "FATAL EXCEPTION:" | grep -q "Process: $PKG"; then
   echo "::error::Crash found in log"; grep -A 40 "FATAL EXCEPTION" shots/logcat.txt | head -150; fail=1
 fi
-grep "ALLPHOTOS_SELFTEST" shots/logcat.txt > shots/selftest.txt || true
+true
 exit $fail
