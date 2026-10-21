@@ -85,8 +85,10 @@ object Indexer {
                 val src = db.sources.value[m.id]
                 if (src?.url == null) {
                     val found = Links.findInText(text)
-                    if (found != null && (src?.pkg == null || Browsers.isBrowser(src.pkg))) {
-                        db.setSource(m.id, Source(src?.pkg, found, if (src?.how == Source.LIVE || src?.how == Source.USAGE) src.how else Source.TEXT))
+                    val pkg = src?.pkg
+                    if (found != null && (pkg == null || Browsers.isBrowser(pkg))) {
+                        val how = src?.how?.takeIf { it == Source.LIVE || it == Source.USAGE } ?: Source.TEXT
+                        db.setSource(m.id, Source(pkg, found, how))
                     }
                 }
             }

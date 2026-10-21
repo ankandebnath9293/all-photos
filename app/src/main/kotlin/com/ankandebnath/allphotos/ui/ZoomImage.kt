@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -92,9 +93,10 @@ fun ZoomImage(
         }
         // Once zoomed in, swap in a sharper copy.
         val still = picture as? Picture.Still
-        LaunchedEffect(scale > 1.6f, still) {
+        val zoomedIn by remember(uri) { derivedStateOf { scale > 1.6f } }
+        LaunchedEffect(zoomedIn, still) {
             val s = still ?: return@LaunchedEffect
-            if (scale <= 1.6f || sharp) return@LaunchedEffect
+            if (!zoomedIn || sharp) return@LaunchedEffect
             val full = max(s.fullW, s.fullH)
             if (full <= max(s.bitmap.width, s.bitmap.height) * 1.1f) {
                 sharp = true

@@ -72,7 +72,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
     }
 
     private fun ensure(db: SQLiteDatabase, id: Long) {
-        db.execSQL("INSERT OR IGNORE INTO meta(id) VALUES(?)", arrayOf(id))
+        db.execSQL("INSERT OR IGNORE INTO meta(id) VALUES(?)", arrayOf<Any?>(id))
     }
 
     fun setImportant(ids: Collection<Long>, on: Boolean) {
@@ -82,7 +82,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
         try {
             for (id in ids) {
                 ensure(db, id)
-                db.execSQL("UPDATE meta SET important=? WHERE id=?", arrayOf(if (on) 1 else 0, id))
+                db.execSQL("UPDATE meta SET important=? WHERE id=?", arrayOf<Any?>(if (on) 1 else 0, id))
             }
             db.setTransactionSuccessful()
         } finally {
@@ -123,9 +123,9 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
                 put("text_mod", mod)
                 put("labels", labels)
             }, "id=?", arrayOf(id.toString()))
-            db.execSQL("DELETE FROM fts WHERE docid=?", arrayOf(id))
+            db.execSQL("DELETE FROM fts WHERE docid=?", arrayOf<Any?>(id))
             val body = (text + "\n" + labels).trim()
-            if (body.isNotEmpty()) db.execSQL("INSERT INTO fts(docid, body) VALUES(?, ?)", arrayOf(id, body))
+            if (body.isNotEmpty()) db.execSQL("INSERT INTO fts(docid, body) VALUES(?, ?)", arrayOf<Any?>(id, body))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -187,7 +187,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
         try {
             for (id in ids) {
                 ensure(db, id)
-                db.execSQL("UPDATE meta SET trashed_at=? WHERE id=?", arrayOf(at, id))
+                db.execSQL("UPDATE meta SET trashed_at=? WHERE id=?", arrayOf<Any?>(at, id))
             }
             db.setTransactionSuccessful()
         } finally {
@@ -209,8 +209,8 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
         db.beginTransaction()
         try {
             for (id in ids) {
-                db.execSQL("DELETE FROM meta WHERE id=?", arrayOf(id))
-                db.execSQL("DELETE FROM fts WHERE docid=?", arrayOf(id))
+                db.execSQL("DELETE FROM meta WHERE id=?", arrayOf<Any?>(id))
+                db.execSQL("DELETE FROM fts WHERE docid=?", arrayOf<Any?>(id))
             }
             db.setTransactionSuccessful()
         } finally {
@@ -223,7 +223,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
     /** Keeps a short history of which app was on screen, for screenshots found later. */
     fun logForeground(e: Foreground) {
         val db = writableDatabase
-        db.execSQL("INSERT INTO fg(t, pkg, url) VALUES(?, ?, ?)", arrayOf(e.time, e.pkg, e.url))
+        db.execSQL("INSERT INTO fg(t, pkg, url) VALUES(?, ?, ?)", arrayOf<Any?>(e.time, e.pkg, e.url))
     }
 
     fun foregroundBetween(from: Long, to: Long): List<Foreground> {
@@ -238,7 +238,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "allphotos.db
     }
 
     fun pruneForeground(before: Long) {
-        writableDatabase.execSQL("DELETE FROM fg WHERE t < ?", arrayOf(before))
+        writableDatabase.execSQL("DELETE FROM fg WHERE t < ?", arrayOf<Any?>(before))
     }
 
     fun counts(): Pair<Int, Int> {
