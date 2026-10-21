@@ -194,10 +194,10 @@ alive "swipes"
 open --ei theme 1 --es name PXL_20261017_201500
 sleep 5
 tapText "Text" || adb shell input tap 540 2278
-sleep 12
-adb shell input tap 300 1150
-shot 62-text-mode 3
-if ! onscreen "Copy"; then echo "::warning::Text mode did not show copy actions"; fi
+shot 62-text-mode 12
+if ! onscreen "Copy all"; then echo "::error::Text mode did not show copy actions"; fail=1; fi
+tapText "Copy all" && sleep 1
+if [ "$(adb shell cmd clipboard get-text 2>/dev/null | head -c 200)" != "" ]; then echo "clipboard: $(adb shell cmd clipboard get-text 2>/dev/null | head -2)"; fi
 adb shell input keyevent 4; sleep 2
 alive "text mode"
 

@@ -21,12 +21,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.SelectAll
@@ -108,10 +110,8 @@ fun TextOverlay(m: Media, onClose: () -> Unit) {
                         if (i >= 0) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             picked = if (i in picked) picked - i else picked + i
-                        } else if (picked.isNotEmpty()) {
-                            picked = emptySet()
                         } else {
-                            onClose()
+                            picked = emptySet()
                         }
                     }
                 },
@@ -128,6 +128,12 @@ fun TextOverlay(m: Media, onClose: () -> Unit) {
                 }
             }
         }
+
+        // Done: back to the photo.
+        androidx.compose.material3.FilledTonalIconButton(
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
+        ) { Icon(Icons.Rounded.Close, "Close text") }
 
         val f = found
         if (f == null) {
