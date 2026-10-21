@@ -36,6 +36,9 @@ android {
             signingConfig = signingConfigs.getByName("allphotos")
         }
         debug {
+            // Shrunk the same way as the release build, so the emulator self test checks the real code.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("allphotos")
         }
     }
