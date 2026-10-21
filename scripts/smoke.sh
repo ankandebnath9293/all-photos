@@ -38,13 +38,23 @@ adb shell content call --uri content://media --method scan_volume --arg external
 sleep 12
 adb shell content query --uri content://media/external/file --projection _display_name:relative_path --where "media_type IN (1,3)" | head -40
 
+# Puts the first crash in the log on the job summary, so it can be read without the full log.
+crashnote() {
+  adb logcat -d > "shots/log-$1.txt"
+  if grep -q "FATAL EXCEPTION" "shots/log-$1.txt"; then
+    echo "::error::Crash during $1: $(grep -A 14 'FATAL EXCEPTION' "shots/log-$1.txt" | sed 's/^.*AndroidRuntime: //' | head -15 | tr '\n' '|' | cut -c1-1800)"
+  fi
+}
+
 echo "== Release build: first launch =="
+adb logcat -c
 adb install -r apk/AllPhotos.apk
 adb shell am start -W -n $ACT >/dev/null
 shot 00-welcome 8
 alive "release first launch"
 adb shell input tap 900 2250; shot 01-storage-step 3
 alive "onboarding step"
+crashnote release
 adb uninstall $PKG >/dev/null
 
 echo "== Debug build with access granted =="
@@ -155,6 +165,7 @@ if grep -q "ANR in $PKG" shots/logcat-main.txt; then
   echo "::error::The app stopped responding"; grep -B 6 -A 12 "ANR in $PKG" shots/logcat-main.txt | head -80; fail=1
 fi
 rm -f shots/logcat-warmup.txt shots/logcat-main.txt
+crashnote debug
 if grep -A 25 "FATAL EXCEPTION" shots/logcat.txt | grep -q "$PKG"; then
   echo "::error::Crash found in log"; grep -A 40 "FATAL EXCEPTION" shots/logcat.txt | head -150; fail=1
 fi

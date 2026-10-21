@@ -50,6 +50,8 @@ android {
     }
 
     packaging {
+        // Compressed native libraries keep the APK small enough to send to the phone.
+        jniLibs.useLegacyPackaging = true
         resources.excludes += listOf("META-INF/*.version", "META-INF/LICENSE*", "META-INF/NOTICE*")
     }
 

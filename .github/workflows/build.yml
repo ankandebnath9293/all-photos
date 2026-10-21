@@ -102,11 +102,17 @@ jobs:
         run: |
           cd out
           [ -f screenshots/logcat.txt ] && grep -E "AllPhotos|ALLPHOTOS|AndroidRuntime|FATAL|allphotos" screenshots/logcat.txt | tail -1500 > screenshots/app-log.txt || true
-          rm -f screenshots/logcat.txt
+          rm -f screenshots/logcat.txt screenshots/log-*.txt
+          # Only the phone APK goes on the branch; the bigger test build stays in the run's artifacts.
+          rm -f AllPhotos-apk/AllPhotos-debug.apk
+          ls -la AllPhotos-apk screenshots | head -80
           echo "Built from ${{ github.sha }} (smoke test: ${{ needs.smoke.result }})" > README.md
           git init -q -b builds
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add -A
           git commit -qm "Build ${{ github.sha }}"
-          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" builds
+          if ! out=$(git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" builds 2>&1); then
+            echo "::error::Push failed: $(echo "$out" | tail -5 | tr '\n' ' ')"
+            exit 1
+          fi
