@@ -70,6 +70,20 @@ alive "onboarding step"
 crashnote release
 adb uninstall $PKG >/dev/null
 
+echo "== Upgrade: version 1.0 installed and opened, then 1.1 installed over it =="
+adb logcat -c
+adb install -r scripts/fixtures/AllPhotos-1.0.apk
+adb shell appops set --uid $PKG MANAGE_EXTERNAL_STORAGE allow
+adb shell am start -W -n $ACT >/dev/null
+sleep 8
+alive "version 1.0 launch"
+adb install -r apk/AllPhotos.apk
+adb shell am start -W -n $ACT >/dev/null
+shot 02-upgraded 8
+alive "launch after upgrading from 1.0"
+crashnote upgrade
+adb uninstall $PKG >/dev/null
+
 echo "== Debug build with access granted =="
 adb install -r apk/AllPhotos-debug.apk
 adb shell appops set --uid $PKG MANAGE_EXTERNAL_STORAGE allow
