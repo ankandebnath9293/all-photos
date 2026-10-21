@@ -17,6 +17,16 @@ shot() { sleep "${2:-5}"; nodialog; adb exec-out screencap -p > "shots/$1.png"; 
 alive() {
   if ! adb shell pidof $PKG >/dev/null; then echo "::error::App is not running after: $1"; fail=1; fi
 }
+ui() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml; }
+onscreen() { ui | grep -q "$1"; }
+# Taps the centre of the first element whose text or description is exactly $1.
+tapText() {
+  local b
+  b=$(ui | tr '>' '\n' | grep -E "(text|content-desc)=\"$1\"" | head -1 | grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' | grep -oE '[0-9]+' | tr '\n' ' ')
+  [ -z "$b" ] && return 1
+  set -- $b
+  adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+}
 open() { adb shell am start -S -W -n $ACT --ez skip true --ei seen 1 --ez dynamic false "$@" >/dev/null; }
 
 adb shell settings put global hide_error_dialogs 1
@@ -126,17 +136,29 @@ echo "== Viewer, details, video, editor, trim =="
 open --ei theme 1 --ei view 2
 shot 50-viewer-photo 6; alive "viewer"
 adb shell input tap 540 1200; shot 51-viewer-immersive 3
-open --ei theme 1 --ei view 2 --ez details true
-shot 52-details 6
-adb shell input tap 540 1400; shot 53-details-more 3
+# Real taps: the Details button in the viewer's bottom bar, then "Show more".
+open --ei theme 1 --ei view 0
+sleep 6
+tapText "Details" || { adb shell input tap 540 900; sleep 1; tapText "Details"; }
+shot 52-details 3
+if ! onscreen "Show more"; then echo "::error::Details panel did not open"; fail=1; fi
+tapText "Show more"
+shot 53-details-more 3
+if ! onscreen "Show less"; then echo "::error::Details 'Show more' did not expand"; fail=1; fi
+adb shell input keyevent 4; sleep 2
 alive "details"
 open --ei theme 1 --ez video true
 shot 54-video-playing 5
 adb shell input tap 540 1000; shot 55-video-controls 2
 alive "video"
-open --ei theme 1 --ez video true --ez details true
-shot 56-video-details 6
-adb shell input tap 540 1400; shot 57-video-details-more 3
+open --ei theme 1 --ez video true
+sleep 5
+tapText "Details" || { adb shell input tap 540 900; sleep 1; tapText "Details"; }
+shot 56-video-details 3
+if ! onscreen "Frame rate"; then echo "::error::Video details did not show the frame rate"; fail=1; fi
+tapText "Show more"
+shot 57-video-details-more 3
+if ! onscreen "Codec"; then echo "::error::Video details did not show the codec"; fail=1; fi
 open --ei theme 1 --ez edit true
 shot 60-editor 7; alive "editor"
 open --ei theme 1 --ez trim true

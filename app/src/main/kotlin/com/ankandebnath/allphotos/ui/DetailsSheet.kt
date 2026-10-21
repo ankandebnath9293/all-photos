@@ -84,6 +84,7 @@ fun DetailsSheet(m: Media, onDismiss: () -> Unit) {
         value = DetailsReader.read(ctx.applicationContext, m, src, label)
     }
     val c = MaterialTheme.colorScheme
+    LaunchedEffect(m.id) { android.util.Log.i("AllPhotos", "Details opened for ${m.name}") }
     Sheet(onDismiss) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding().padding(bottom = 16.dp),
