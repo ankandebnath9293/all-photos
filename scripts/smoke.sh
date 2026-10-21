@@ -30,6 +30,8 @@ tapText() {
 open() { adb shell am start -S -W -n $ACT --ez skip true --ei seen 1 --ez dynamic false "$@" >/dev/null; }
 
 adb shell settings put global hide_error_dialogs 1
+# The emulator's "Viewing full screen" tip has a bug that restarts System UI; mark it as already seen.
+adb shell settings put secure immersive_mode_confirmations confirmed
 sleep 25; nodialog
 for ime in $(adb shell ime list -s | tr -d '\r'); do adb shell ime disable "$ime" >/dev/null; done
 
@@ -51,7 +53,7 @@ adb shell content query --uri content://media/external/file --projection _displa
 # Puts the first crash in the log on the job summary, so it can be read without the full log.
 crashnote() {
   adb logcat -d > "shots/log-$1.txt"
-  if grep -q "FATAL EXCEPTION" "shots/log-$1.txt"; then
+  if grep -q "FATAL EXCEPTION: main" "shots/log-$1.txt" && grep -q "Process: $PKG" "shots/log-$1.txt"; then
     echo "::error::Crash during $1: $(grep -A 14 'FATAL EXCEPTION' "shots/log-$1.txt" | sed 's/^.*AndroidRuntime: //' | head -15 | tr '\n' '|' | cut -c1-1800)"
   fi
 }
@@ -161,7 +163,7 @@ adb shell input tap 540 1000; shot 55-video-controls 2
 alive "video"
 adb logcat -c
 open --ei theme 1 --ez video true
-sleep 3
+sleep 1.5
 adb shell input tap 716 2278
 sleep 3
 shot 56-video-details 1
@@ -197,7 +199,7 @@ if grep -q "ANR in $PKG" shots/logcat-main.txt; then
 fi
 rm -f shots/logcat-warmup.txt shots/logcat-main.txt
 crashnote debug
-if grep -A 25 "FATAL EXCEPTION" shots/logcat.txt | grep -q "$PKG"; then
+if grep -v "IN SYSTEM PROCESS" shots/logcat.txt | grep -A 25 "FATAL EXCEPTION:" | grep -q "Process: $PKG"; then
   echo "::error::Crash found in log"; grep -A 40 "FATAL EXCEPTION" shots/logcat.txt | head -150; fail=1
 fi
 grep "ALLPHOTOS_SELFTEST" shots/logcat.txt > shots/selftest.txt || true
