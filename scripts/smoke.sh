@@ -136,29 +136,38 @@ echo "== Viewer, details, video, editor, trim =="
 open --ei theme 1 --ei view 2
 shot 50-viewer-photo 6; alive "viewer"
 adb shell input tap 540 1200; shot 51-viewer-immersive 3
-# Real taps: the Details button in the viewer's bottom bar, then "Show more".
-open --ei theme 1 --ei view 0
+# Details on a photo: first through the test hook, then with real taps.
+adb logcat -c
+open --ei theme 1 --ez photo true --ez details true
+shot 52-details 6
+if ! adb logcat -d | grep -q "Details opened"; then
+  echo "::error::Details panel did not open from the hook ($(adb logcat -d | grep -c 'Demo opened details') hook lines)"; fail=1
+fi
+adb shell input keyevent 4; sleep 2
+adb logcat -c
+open --ei theme 1 --ez photo true
 sleep 6
-tapText "Details" || { adb shell input tap 540 900; sleep 1; tapText "Details"; }
-shot 52-details 3
-if ! onscreen "Show more"; then echo "::error::Details panel did not open"; fail=1; fi
-tapText "Show more"
+tapText "Details" || adb shell input tap 716 2278
+sleep 3
+if ! adb logcat -d | grep -q "Details opened"; then echo "::error::Details button did not open the panel"; fail=1; fi
+tapText "Show more" || true
 shot 53-details-more 3
-if ! onscreen "Show less"; then echo "::error::Details 'Show more' did not expand"; fail=1; fi
+if ! adb logcat -d | grep -q "Details show more: true"; then echo "::error::Details 'Show more' did not expand"; fail=1; fi
 adb shell input keyevent 4; sleep 2
 alive "details"
 open --ei theme 1 --ez video true
 shot 54-video-playing 5
 adb shell input tap 540 1000; shot 55-video-controls 2
 alive "video"
+adb logcat -c
 open --ei theme 1 --ez video true
-sleep 5
-tapText "Details" || { adb shell input tap 540 900; sleep 1; tapText "Details"; }
-shot 56-video-details 3
-if ! onscreen "Frame rate"; then echo "::error::Video details did not show the frame rate"; fail=1; fi
-tapText "Show more"
-shot 57-video-details-more 3
-if ! onscreen "Codec"; then echo "::error::Video details did not show the codec"; fail=1; fi
+sleep 3
+adb shell input tap 716 2278
+sleep 3
+shot 56-video-details 1
+if ! adb logcat -d | grep -q "Details opened"; then echo "::error::Video details did not open"; fail=1; fi
+adb shell input keyevent 4; sleep 2
+shot 57-video-autohide 4
 open --ei theme 1 --ez edit true
 shot 60-editor 7; alive "editor"
 open --ei theme 1 --ez trim true

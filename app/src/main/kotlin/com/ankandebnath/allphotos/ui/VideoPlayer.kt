@@ -104,6 +104,8 @@ class PlayerHolder(ctx: Context) {
     var uri by mutableStateOf<Uri?>(null)
         private set
     var playing by mutableStateOf(false)
+    /** True while the video is meant to play (even if it is briefly buffering). */
+    var wantsPlay by mutableStateOf(false)
     var ended by mutableStateOf(false)
     var ready by mutableStateOf(false)
     var firstFrame by mutableStateOf(false)
@@ -118,6 +120,10 @@ class PlayerHolder(ctx: Context) {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                wantsPlay = playWhenReady
             }
 
             override fun onPlaybackStateChanged(state: Int) {

@@ -38,14 +38,15 @@ object Demo {
         }
         val view = i.getIntExtra("view", -1)
         val wantVideo = i.getBooleanExtra("video", false)
+        val wantPhoto = i.getBooleanExtra("photo", false)
         val details = i.getBooleanExtra("details", false)
         val edit = i.getBooleanExtra("edit", false)
         val trim = i.getBooleanExtra("trim", false)
-        if (view >= 0 || wantVideo || edit || trim) {
+        if (view >= 0 || wantVideo || wantPhoto || edit || trim) {
             activity.lifecycleScope.launch {
                 val lib = MediaRepo.library.filterNotNull().first { it.items.isNotEmpty() }
                 val list = lib.items
-                val idx = if (wantVideo || trim) list.indexOfFirst { it.isVideo } else if (edit) list.indexOfFirst { !it.isVideo && !it.isScreenshot } else view
+                val idx = if (wantVideo || trim) list.indexOfFirst { it.isVideo } else if (edit || wantPhoto) list.indexOfFirst { !it.isVideo && !it.isScreenshot } else view
                 if (idx < 0) return@launch
                 when {
                     edit -> app.editor = EditReq(list[idx], trim = false)
@@ -55,6 +56,7 @@ object Demo {
                         if (details) {
                             delay(1500)
                             app.details = list[idx]
+                            Log.i("AllPhotos", "Demo opened details for ${list[idx].name}")
                         }
                     }
                 }

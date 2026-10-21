@@ -109,7 +109,7 @@ fun DetailsSheet(m: Media, onDismiss: () -> Unit) {
                 }
             }
             Gap(14.dp)
-            FilledTonalButton(onClick = { more = !more }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            FilledTonalButton(onClick = { more = !more; android.util.Log.i("AllPhotos", "Details show more: $more") }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Icon(if (more) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                 GapW(6.dp)
                 Text(if (more) "Show less" else "Show more")

@@ -152,10 +152,10 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
         if (pager.isScrollInProgress) return@LaunchedEffect
         if (current != null && current.isVideo) player.load(current, null) else player.stop()
     }
-    LaunchedEffect(player.playing) {
-        if (player.playing) {
-            kotlinx.coroutines.delay(2500)
-            if (player.playing) chrome = false
+    LaunchedEffect(player.wantsPlay, chrome, current?.id) {
+        if (player.wantsPlay && chrome && current?.isVideo == true && app.details == null) {
+            kotlinx.coroutines.delay(3000)
+            if (player.wantsPlay && app.details == null) chrome = false
         }
     }
 
