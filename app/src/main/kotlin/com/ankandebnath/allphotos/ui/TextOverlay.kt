@@ -67,7 +67,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Text read from a photo, with the size of the picture it was read from. */
-class FoundText(val lines: List<Analyze.Line>, val w: Int, val h: Int)
+class FoundText(val lines: List<Analyze.Line>, val w: Int, val h: Int, val failed: Boolean = false)
 
 /**
  * Tap-to-copy: the lines of text in a photo are outlined; tap one (or a few) to copy, share, call
@@ -77,13 +77,23 @@ class FoundText(val lines: List<Analyze.Line>, val w: Int, val h: Int)
 fun TextOverlay(m: Media, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val found by produceState<FoundText?>(null, m.id) {
+    var attempt by remember(m.id) { mutableStateOf(0) }
+    val found by produceState<FoundText?>(null, m.id, attempt) {
+        value = null
         value = withContext(Dispatchers.IO) {
-            val b = Analyze.forReading(ctx, m) ?: return@withContext FoundText(emptyList(), 1, 1)
+            Analyze.reading.incrementAndGet()
             try {
-                FoundText(Analyze.lines(b).orEmpty(), b.width, b.height)
+                val b = Analyze.forReading(ctx, m) ?: return@withContext FoundText(emptyList(), 1, 1, failed = true)
+                try {
+                    // The reader can be slow to wake up the first time; give it a second go.
+                    val lines = Analyze.lines(b, quick = true) ?: Analyze.lines(b, quick = true)
+                    android.util.Log.i("AllPhotos", "Text mode: ${lines?.size ?: "failed"} lines")
+                    FoundText(lines.orEmpty(), b.width, b.height, failed = lines == null)
+                } finally {
+                    b.recycle()
+                }
             } finally {
-                b.recycle()
+                Analyze.reading.decrementAndGet()
             }
         }
     }
@@ -142,6 +152,14 @@ fun TextOverlay(m: Media, onClose: () -> Unit) {
                 Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface) {
                     Text("Reading text…", color = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
+            }
+        } else if (f.failed) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface) {
+                    Text("Couldn't read the text", color = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+                }
+                Gap(10.dp)
+                androidx.compose.material3.FilledTonalButton(onClick = { attempt++ }) { Text("Try again") }
             }
         } else if (f.lines.isEmpty()) {
             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface, modifier = Modifier.align(Alignment.Center)) {

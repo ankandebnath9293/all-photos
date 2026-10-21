@@ -86,6 +86,9 @@ object Indexer {
 
     /** Reads the text (and, for photos, labels) of one file into the search index. */
     private fun readOne(ctx: Context, m: Media, labels: Boolean) {
+        // Step aside while the person is reading text in the viewer.
+        var waited = 0
+        while (Analyze.reading.get() > 0 && waited < 120) { Thread.sleep(500); waited++ }
         val db = Db.get(ctx)
         val b = Analyze.forReading(ctx, m)
         if (b == null) {

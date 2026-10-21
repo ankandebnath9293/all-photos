@@ -193,8 +193,11 @@ alive "swipes"
 # Tap-to-copy text on the receipt photo.
 open --ei theme 1 --es name PXL_20261017_201500
 sleep 5
+adb logcat -c
 tapText "Text" || adb shell input tap 540 2278
-for i in $(seq 1 12); do onscreen "Copy all" && break; sleep 3; done
+for i in $(seq 1 45); do adb logcat -d -s AllPhotos:I | grep -q "Text mode:" && break; sleep 2; done
+echo "text: $(adb logcat -d -s AllPhotos:* | grep -E "Text mode|Text reading" | tail -3)"
+for i in $(seq 1 6); do onscreen "Copy all" && break; sleep 2; done
 shot 62-text-mode 1
 if ! onscreen "Copy all"; then echo "::error::Text mode did not show copy actions"; fail=1; fi
 tapText "Copy all" && sleep 1

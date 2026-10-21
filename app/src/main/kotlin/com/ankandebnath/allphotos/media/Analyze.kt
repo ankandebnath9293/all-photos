@@ -26,6 +26,12 @@ object Analyze {
     private const val TAG = "AllPhotos"
 
     private val recognizer: TextRecognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+
+    /** A second reader for text the person is waiting on, so it never queues behind the indexer. */
+    private val quickRecognizer: TextRecognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+
+    /** How many on-screen reads are running; the background indexer waits while this is above 0. */
+    val reading = java.util.concurrent.atomic.AtomicInteger(0)
     private val labeler: ImageLabeler by lazy {
         ImageLabeling.getClient(ImageLabelerOptions.Builder().setConfidenceThreshold(0.72f).build())
     }
@@ -85,8 +91,8 @@ object Analyze {
     class Line(val text: String, val box: android.graphics.Rect, val block: Int)
 
     /** Every line of text in a picture, in reading order, with positions. */
-    fun lines(b: Bitmap): List<Line>? = runCatching {
-        val r = Tasks.await(recognizer.process(InputImage.fromBitmap(b, 0)), 30, TimeUnit.SECONDS)
+    fun lines(b: Bitmap, quick: Boolean = false): List<Line>? = runCatching {
+        val r = Tasks.await((if (quick) quickRecognizer else recognizer).process(InputImage.fromBitmap(b, 0)), 60, TimeUnit.SECONDS)
         val out = ArrayList<Line>()
         r.textBlocks.forEachIndexed { bi, block ->
             for (l in block.lines) {
