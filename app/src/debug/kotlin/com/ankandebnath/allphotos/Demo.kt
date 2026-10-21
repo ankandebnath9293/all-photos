@@ -41,14 +41,15 @@ object Demo {
         val view = i.getIntExtra("view", -1)
         val wantVideo = i.getBooleanExtra("video", false)
         val wantPhoto = i.getBooleanExtra("photo", false)
+        val byName = i.getStringExtra("name")
         val details = i.getBooleanExtra("details", false)
         val edit = i.getBooleanExtra("edit", false)
         val trim = i.getBooleanExtra("trim", false)
-        if (view >= 0 || wantVideo || wantPhoto || edit || trim) {
+        if (view >= 0 || wantVideo || wantPhoto || edit || trim || byName != null) {
             activity.lifecycleScope.launch {
                 val lib = MediaRepo.library.filterNotNull().first { it.items.isNotEmpty() }
                 val list = lib.items
-                val idx = if (wantVideo || trim) list.indexOfFirst { it.isVideo } else if (edit || wantPhoto) list.indexOfFirst { !it.isVideo && !it.isScreenshot } else view
+                val idx = if (byName != null) list.indexOfFirst { it.name.contains(byName) } else if (wantVideo || trim) list.indexOfFirst { it.isVideo } else if (edit || wantPhoto) list.indexOfFirst { !it.isVideo && !it.isScreenshot } else view
                 if (idx < 0) return@launch
                 when {
                     edit -> app.editor = EditReq(list[idx], trim = false)

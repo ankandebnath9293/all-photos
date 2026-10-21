@@ -191,10 +191,12 @@ if onscreen "More"; then echo "::error::Swiping down did not close the viewer"; 
 alive "swipes"
 
 # Tap-to-copy text on the receipt photo.
-open --ei theme 1 --ez photo true
+open --ei theme 1 --es name PXL_20261017_201500
 sleep 5
 tapText "Text" || adb shell input tap 540 2278
-shot 62-text-mode 6
+sleep 12
+adb shell input tap 300 1150
+shot 62-text-mode 3
 if ! onscreen "Copy"; then echo "::warning::Text mode did not show copy actions"; fi
 adb shell input keyevent 4; sleep 2
 alive "text mode"

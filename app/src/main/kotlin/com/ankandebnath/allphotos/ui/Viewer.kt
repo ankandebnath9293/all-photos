@@ -150,6 +150,16 @@ private fun Modifier.heroTransform(frame: () -> Frame): Modifier = this
         alpha = f.alpha
     }
 
+/** Where the finger has moved the photo. Updated straight away on every move, animated back on release. */
+@androidx.compose.runtime.Stable
+private class DragOffset {
+    var value by mutableStateOf(Offset.Zero)
+
+    suspend fun animateTo(target: Offset, spec: androidx.compose.animation.core.AnimationSpec<Offset>) {
+        androidx.compose.animation.core.animate(Offset.VectorConverter, value, target, animationSpec = spec) { v, _ -> value = v }
+    }
+}
+
 /** A vertical drag on a video page, handed to the viewer like a photo's. */
 private fun Modifier.verticalDrag(enabled: Boolean, onDelta: (Offset) -> Unit, onEnd: () -> Unit): Modifier =
     if (!enabled) this else this.pointerInput(Unit) {
@@ -219,7 +229,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
     val origin = remember { if (motion.minimal || req.explicit.isNotEmpty()) null else startId?.let { HeroBounds.get(it) } }
     val enter = remember { Animatable(if (origin != null) 0f else 1f) }
     val appear = remember { Animatable(if (origin != null) 1f else 0f) }
-    val drag = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val drag = remember { DragOffset() }
     val back = remember { Animatable(0f) }
     var closing by remember { mutableStateOf<Pair<Frame, Frame>?>(null) }
     val closeT = remember { Animatable(0f) }
@@ -393,7 +403,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                     if (m.isVideo) {
                         Box(
                             Modifier.fillMaxSize()
-                                .verticalDrag(enabled = isCur && closing == null, onDelta = { d -> scope.launch { drag.snapTo(drag.value + d) } }, onEnd = { endDrag() })
+                                .verticalDrag(enabled = isCur && closing == null, onDelta = { d -> drag.value += d }, onEnd = { endDrag() })
                                 .pointerInput(m.id) {
                                     detectTapGestures(
                                         onTap = { chrome = !chrome },
@@ -417,7 +427,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                             onTap = { chrome = !chrome },
                             onZoomed = { z -> zoomed = z; if (z) chrome = false },
                             onHdr = { h -> hdrPages[m.id] = h },
-                            onDragDelta = { d -> scope.launch { drag.snapTo(drag.value + d) } },
+                            onDragDelta = { d -> drag.value += d },
                             onDragEnd = { endDrag() },
                             interactive = !textMode && closing == null,
                             resetKey = if (isCur) resetZoom else 0,
