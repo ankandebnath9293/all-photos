@@ -178,8 +178,8 @@ alive "details"
 # Swipe up for details, swipe down to close.
 adb logcat -c
 open --ei theme 1 --ez photo true
-sleep 5
-adb shell input swipe 540 1500 540 900 250
+sleep 8
+adb shell input swipe 540 1400 540 800 300
 sleep 2
 shot 58-swipe-up-details 1
 if ! adb logcat -d | grep -q "Details opened"; then echo "::error::Swiping up did not open the details"; fail=1; fi
@@ -194,7 +194,8 @@ alive "swipes"
 open --ei theme 1 --es name PXL_20261017_201500
 sleep 5
 tapText "Text" || adb shell input tap 540 2278
-shot 62-text-mode 12
+for i in $(seq 1 12); do onscreen "Copy all" && break; sleep 3; done
+shot 62-text-mode 1
 if ! onscreen "Copy all"; then echo "::error::Text mode did not show copy actions"; fail=1; fi
 tapText "Copy all" && sleep 1
 if [ "$(adb shell cmd clipboard get-text 2>/dev/null | head -c 200)" != "" ]; then echo "clipboard: $(adb shell cmd clipboard get-text 2>/dev/null | head -2)"; fi

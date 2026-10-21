@@ -125,8 +125,11 @@ fun ZoomImage(
             is Picture.Animated -> if (p.h > 0) p.w.toFloat() / p.h else 1f
             else -> 1f
         }
-        val fitW = if (w / h > aspect) h * aspect else w
-        val fitH = if (w / h > aspect) h else w / aspect
+        val fitWNow = if (w / h > aspect) h * aspect else w
+        val fitHNow = if (w / h > aspect) h else w / aspect
+        // Read through state so a gesture in progress is not restarted when the picture finishes loading.
+        val fitW by rememberUpdatedState(fitWNow)
+        val fitH by rememberUpdatedState(fitHNow)
 
         fun clampX(x: Float, s: Float): Float {
             val m = ((fitW * s - w) / 2f).coerceAtLeast(0f)
@@ -153,7 +156,7 @@ fun ZoomImage(
         }
 
         val gestures = if (!interactive) Modifier else Modifier
-            .pointerInput(uri, fitW, fitH) {
+            .pointerInput(uri) {
                 val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -207,7 +210,7 @@ fun ZoomImage(
                     }
                 }
             }
-            .pointerInput(uri, fitW, fitH) {
+            .pointerInput(uri) {
                 detectTapGestures(
                     onTap = { tap() },
                     onDoubleTap = { p ->

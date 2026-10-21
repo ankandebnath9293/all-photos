@@ -137,7 +137,12 @@ fun TextOverlay(m: Media, onClose: () -> Unit) {
 
         val f = found
         if (f == null) {
-            LoadingIndicator(Modifier.align(Alignment.Center))
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                LoadingIndicator()
+                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface) {
+                    Text("Reading text…", color = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
+            }
         } else if (f.lines.isEmpty()) {
             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface, modifier = Modifier.align(Alignment.Center)) {
                 Text("No text found", color = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
