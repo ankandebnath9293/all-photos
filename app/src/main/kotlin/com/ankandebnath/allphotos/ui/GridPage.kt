@@ -28,6 +28,8 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -297,6 +299,6 @@ fun SmallIconButton(icon: ImageVector, desc: String, onClick: () -> Unit) {
 /** Search and settings, at the top right of every tab. */
 @Composable
 fun TabActions(app: AppState) {
-    SmallIconButton(androidx.compose.material.icons.Icons.Rounded.Search, "Search") { app.open(Dest.Search) }
-    SmallIconButton(androidx.compose.material.icons.Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) }
+    SmallIconButton(Icons.Rounded.Search, "Search") { app.open(Dest.Search) }
+    SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) }
 }
