@@ -516,7 +516,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                         LaunchedEffect(m?.id, d) { android.util.Log.i("AllPhotos", "Viewer countdown: $d days") }
                         Row(
                             Modifier.padding(start = 16.dp, bottom = 10.dp).clip(RoundedCornerShape(50))
-                                .background(if (d <= 3) Color(0xFFB3261E).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.18f))
+                                .background(if (d <= 3) Color(0xFFB3261E).copy(alpha = 0.9f) else Color.Black.copy(alpha = 0.5f))
                                 .clickable {
                                     if (m != null) {
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)

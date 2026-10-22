@@ -158,12 +158,14 @@ tapText "Search" || echo "no Search button found"
 sleep 3
 shot 45-search-from-top 0
 if ! adb logcat -d -s AllPhotos:I | grep -q "Page opened: Search"; then echo "::error::The search button at the top did not open search"; fail=1; fi
-adb shell input keyevent 4; sleep 2
+open --ei theme 1
+sleep 5
 tapText "Settings" || echo "no Settings button found"
-shot 46-settings-sliding 0.2
+shot 46-settings-sliding 0.1
 shot 47-settings-open 2
 adb shell input keyevent 4
-shot 48-settings-closing 0.15
+shot 48-settings-closing 0.1
+shot 48b-back-on-photos 2
 alive "search and settings"
 
 echo "== Large files: the thumbnail opens a preview =="
@@ -171,8 +173,7 @@ open --ei theme 1 --es open large
 sleep 5
 adb logcat -c
 tapText "Play" || echo "no video thumbnail found"
-sleep 4
-shot 49-large-preview 0
+shot 49-large-preview 4
 if ! adb logcat -d -s AllPhotos:I | grep -q "Viewer opened"; then echo "::error::Tapping a large file's thumbnail did not open it"; fail=1; fi
 alive "large preview"
 
@@ -294,8 +295,7 @@ alive "new screenshot"
 
 echo "== Countdown on a screenshot that will be cleaned up =="
 open --ei theme 1 --el rulesstart 1 --es name Screenshot_20261021-200000
-sleep 5
-shot 69-countdown 0
+shot 69-countdown 5
 if ! onscreen "Moves to trash"; then echo "::error::The screenshot countdown did not show in the viewer"; fail=1; fi
 open --ei theme 1 --el rulesstart 0
 sleep 3
