@@ -1,0 +1,15 @@
+e: file:///home/runner/work/all-photos/all-photos/app/src/main/kotlin/com/ankandebnath/allphotos/ui/GridPage.kt:300:67 Unresolved reference 'Search'.
+e: file:///home/runner/work/all-photos/all-photos/app/src/main/kotlin/com/ankandebnath/allphotos/ui/GridPage.kt:301:67 Unresolved reference 'Settings'.
+
+> Task :app:compileDebugKotlin FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1792651008161.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/all-photos/all-photos/build/reports/problems/problems-report.html
+--
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+--
+BUILD FAILED in 34s
+18 actionable tasks: 8 executed, 10 from cache
