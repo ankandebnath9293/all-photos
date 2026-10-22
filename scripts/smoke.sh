@@ -149,6 +149,33 @@ open --ei theme 2 --es open settings
 adb shell input swipe 540 1900 540 500 300
 shot 4-settings-dark-scrolled 3
 
+echo "== Search and settings from the top of a tab =="
+open --ei theme 1
+sleep 5
+shot 44-photos-top 0
+adb logcat -c
+tapText "Search" || echo "no Search button found"
+sleep 3
+shot 45-search-from-top 0
+if ! adb logcat -d -s AllPhotos:I | grep -q "Page opened: Search"; then echo "::error::The search button at the top did not open search"; fail=1; fi
+adb shell input keyevent 4; sleep 2
+tapText "Settings" || echo "no Settings button found"
+shot 46-settings-sliding 0.2
+shot 47-settings-open 2
+adb shell input keyevent 4
+shot 48-settings-closing 0.15
+alive "search and settings"
+
+echo "== Large files: the thumbnail opens a preview =="
+open --ei theme 1 --es open large
+sleep 5
+adb logcat -c
+tapText "Play" || echo "no video thumbnail found"
+sleep 4
+shot 49-large-preview 0
+if ! adb logcat -d -s AllPhotos:I | grep -q "Viewer opened"; then echo "::error::Tapping a large file's thumbnail did not open it"; fail=1; fi
+alive "large preview"
+
 echo "== Viewer, details, video, editor, trim =="
 open --ei theme 1 --ei view 2
 shot 50-viewer-open 6; alive "viewer"
@@ -216,6 +243,17 @@ if ! adb logcat -d | grep -q "Details opened"; then echo "::error::Video details
 adb shell input keyevent 4; sleep 2
 open --ei theme 1 --ez video true
 shot 57-video-autohide 7
+# Taps on a video toggle its controls, and a swipe down closes it, the same as on a photo.
+adb logcat -c
+adb shell input tap 540 900; sleep 1.5
+adb shell input tap 540 900; sleep 1.5
+if ! adb logcat -d -s AllPhotos:I | grep -q "Viewer controls shown" || ! adb logcat -d -s AllPhotos:I | grep -q "Viewer controls hidden"; then
+  echo "::error::Tapping a video did not toggle its controls"; fail=1
+fi
+adb shell input swipe 540 800 540 1800 260; sleep 2
+shot 58b-video-swiped-down 1
+if ! adb logcat -d -s AllPhotos:I | grep -q "Viewer closing"; then echo "::error::Swiping down on a video did not close it"; fail=1; fi
+alive "video gestures"
 open --ei theme 1 --ez edit true
 shot 60-editor 7; alive "editor"
 tapText "Filters" && shot 63-editor-filters 3
@@ -253,6 +291,14 @@ if ! adb shell dumpsys notification --noredact | grep -qE "android.title=.*[Ss]c
 fi
 adb shell cmd statusbar expand-notifications; shot 70-notification 3; adb shell cmd statusbar collapse
 alive "new screenshot"
+
+echo "== Countdown on a screenshot that will be cleaned up =="
+open --ei theme 1 --el rulesstart 1 --es name Screenshot_20261021-200000
+sleep 5
+shot 69-countdown 0
+if ! onscreen "Moves to trash"; then echo "::error::The screenshot countdown did not show in the viewer"; fail=1; fi
+open --ei theme 1 --el rulesstart 0
+sleep 3
 
 echo "== Background jobs =="
 adb shell cmd jobscheduler run -f $PKG 0 >/dev/null 2>&1 || true

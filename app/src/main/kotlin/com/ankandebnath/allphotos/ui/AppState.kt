@@ -55,6 +55,7 @@ class AppState {
     var askConsent: (PendingIntent) -> Unit = {}
 
     fun open(d: Dest) {
+        android.util.Log.i("AllPhotos", "Page opened: ${d::class.simpleName}")
         stack += d
     }
 

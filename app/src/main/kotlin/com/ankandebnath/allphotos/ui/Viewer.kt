@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.MoreVert
@@ -115,6 +116,7 @@ import com.ankandebnath.allphotos.logic.Links
 import com.ankandebnath.allphotos.media.DetailsReader
 import com.ankandebnath.allphotos.media.Share
 import com.ankandebnath.allphotos.media.VideoFacts
+import com.ankandebnath.allphotos.work.Cleaner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -203,6 +205,9 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
     val db = remember { Db.get(ctx) }
     val important by db.important.collectAsState()
     val sources by db.sources.collectAsState()
+    val prefs = remember { com.ankandebnath.allphotos.data.Prefs.get(ctx) }
+    val settings by prefs.settings.collectAsState()
+    val rulesStart = remember { prefs.rulesStart }
 
     // The list follows the library, so deleted items drop out while you browse.
     val items = remember(req, lib) {
@@ -236,6 +241,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
     val corner = with(density) { 3.dp.toPx() }
 
     DisposableEffect(Unit) {
+        android.util.Log.i("AllPhotos", "Viewer opened on ${items.getOrNull(req.start)?.name}")
         HeroBounds.hidden = startId.takeIf { origin != null }
         val w = activity?.window
         val c = w?.let { WindowCompat.getInsetsController(it, view) }
@@ -268,6 +274,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
 
     // Hide the status and navigation bars along with the controls.
     LaunchedEffect(chrome) {
+        android.util.Log.i("AllPhotos", "Viewer controls ${if (chrome) "shown" else "hidden"}")
         val w = activity?.window ?: return@LaunchedEffect
         val c = WindowCompat.getInsetsController(w, view)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -325,6 +332,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
 
         fun requestClose() {
             if (closing != null) return
+            android.util.Log.i("AllPhotos", "Viewer closing")
             textMode = false
             scope.launch {
                 val m = items.getOrNull(pager.currentPage)
@@ -388,6 +396,28 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                 .graphicsLayer { alpha = appear.value }
                 .drawBehind { drawRect(Color.Black.copy(alpha = frame().backdrop)) },
         ) {
+            // The one video surface sits under the pager: the pages stay on top so taps, double taps and
+            // swipes (sideways, down to close, up for details) work on videos exactly as on photos.
+            val vid = current?.takeIf { it.isVideo }
+            val settled = vid != null && !pager.isScrollInProgress && player.uri == vid.uri && entered && closing == null && !dragging
+            val showingVideo = settled && player.firstFrame
+            if (vid != null) {
+                LaunchedEffect(settled) {
+                    if (!settled) {
+                        player.firstFrame = false
+                    } else if (!player.player.playWhenReady) {
+                        // A paused video needs one frame drawn on the new surface.
+                        player.player.seekTo(player.player.currentPosition)
+                    }
+                }
+                Box(Modifier.fillMaxSize().heroTransform(frame), contentAlignment = Alignment.Center) {
+                    val ar = aspectNow
+                    Box(if (ar > 0f) Modifier.fillMaxWidth().aspectRatio(ar, matchHeightConstraintsFirst = ar < screen.width / screen.height) else Modifier.fillMaxSize()) {
+                        SharedVideoSurface(player, visible = settled, modifier = Modifier.fillMaxSize())
+                    }
+                }
+            }
+
             HorizontalPager(
                 state = pager,
                 key = { items[it].id },
@@ -415,7 +445,8 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            placeholder()
+                            // Until the first frame arrives the thumbnail covers the surface, so there is never a black flash.
+                            if (!(isCur && showingVideo)) placeholder()
                             val err = player.error
                             if (isCur && err != null && player.uri == m.uri) VideoError(err)
                         }
@@ -436,28 +467,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                 }
             }
 
-            // The one video surface, laid over the current page when it is a video.
             val cur = current
-            if (cur != null && cur.isVideo) {
-                val settled = !pager.isScrollInProgress && player.uri == cur.uri && entered && closing == null && !dragging
-                LaunchedEffect(settled) {
-                    if (!settled) {
-                        player.firstFrame = false
-                    } else if (!player.player.playWhenReady) {
-                        // A paused video needs one frame drawn on the new surface.
-                        player.player.seekTo(player.player.currentPosition)
-                    }
-                }
-                Box(Modifier.fillMaxSize().heroTransform(frame), contentAlignment = Alignment.Center) {
-                    val ar = aspectNow
-                    Box(if (ar > 0f) Modifier.fillMaxWidth().aspectRatio(ar, matchHeightConstraintsFirst = ar < screen.width / screen.height) else Modifier.fillMaxSize()) {
-                        SharedVideoSurface(player, visible = settled, modifier = Modifier.fillMaxSize())
-                    }
-                    // Until the first frame arrives, the thumbnail stays on top so there is never a black flash.
-                    if (!settled || !player.firstFrame) Thumb(cur, 640, Modifier.fillMaxSize(), contentScale = ContentScale.Fit, bg = Color.Transparent)
-                }
-            }
-
             if (textMode && cur != null && !cur.isVideo) {
                 TextOverlay(cur) { textMode = false }
             }
@@ -465,7 +475,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
             val m = current
             val showChrome = chrome && !textMode
             AnimatedVisibility(showChrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = chromeAlpha() }) {
-                Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))) {
+                Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))) {
                     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { requestClose() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Color.White) }
                         if (m != null) {
@@ -497,6 +507,37 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                                     ViewerMenu(menu, m, sources[m.id]?.url, actions, onDismiss = { menu = false }, onDetails = { app.details = m })
                                 }
                             }
+                        }
+                    }
+                    // How long until a clean-up rule moves this to the trash; tap to keep it.
+                    val left = if (m == null || req.fromTrash) null else Cleaner.daysLeft(m, settings, important, rulesStart)
+                    AnimatedVisibility(left != null, enter = fadeIn() + androidx.compose.animation.expandVertically(), exit = fadeOut() + androidx.compose.animation.shrinkVertically()) {
+                        val d = left ?: 0
+                        LaunchedEffect(m?.id, d) { android.util.Log.i("AllPhotos", "Viewer countdown: $d days") }
+                        Row(
+                            Modifier.padding(start = 16.dp, bottom = 10.dp).clip(RoundedCornerShape(50))
+                                .background(if (d <= 3) Color(0xFFB3261E).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.18f))
+                                .clickable {
+                                    if (m != null) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        actions.important(listOf(m), true)
+                                    }
+                                }
+                                .padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.HourglassBottom, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            GapW(6.dp)
+                            Text(
+                                when {
+                                    d <= 0 -> "Moves to trash today"
+                                    d == 1 -> "Moves to trash tomorrow"
+                                    else -> "Moves to trash in $d days"
+                                },
+                                color = Color.White, style = MaterialTheme.typography.labelMedium,
+                            )
+                            GapW(10.dp)
+                            Text("Keep", color = Color(0xFFFFC94A), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

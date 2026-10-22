@@ -53,6 +53,7 @@ object Thumbs {
             val handle = job?.invokeOnCompletion { if (it != null) signal.cancel() }
             try {
                 val bmp = runCatching { ctx.contentResolver.loadThumbnail(m.uri, request(m, px), signal) }.getOrNull()
+                    ?: (if (m.isVideo) videoFrame(ctx, m, px) else null)
                     ?: return@withContext null
                 val img = shrink(bmp, px).asImageBitmap()
                 cache.put(key(m, px), img)
@@ -71,6 +72,20 @@ object Thumbs {
         val a = m.aspect.coerceIn(1 / 3f, 3f)
         return if (a < 1f) Size(px, (px / a).toInt()) else Size((px * a).toInt(), px)
     }
+
+    /** Some videos (often .MOV files from other phones) get no system thumbnail; read a frame ourselves. */
+    private fun videoFrame(ctx: Context, m: Media, px: Int): Bitmap? = runCatching {
+        val r = android.media.MediaMetadataRetriever()
+        try {
+            r.setDataSource(ctx, m.uri)
+            val at = (minOf(1000L, m.durationMs / 3)).coerceAtLeast(0L) * 1000L
+            val sz = request(m, px)
+            r.getScaledFrameAtTime(at, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, sz.width, sz.height)
+                ?: r.frameAtTime
+        } finally {
+            r.release()
+        }
+    }.getOrNull()
 
     /** The system sometimes returns a larger picture than asked; keep memory use predictable. */
     private fun shrink(b: Bitmap, px: Int): Bitmap {

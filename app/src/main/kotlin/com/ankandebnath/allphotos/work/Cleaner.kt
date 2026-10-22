@@ -31,6 +31,17 @@ object Cleaner {
         Chat.FACEBOOK -> s.facebookRule
     }
 
+    /** Days until [m] is moved to the trash by a clean-up rule, or null when no rule covers it. */
+    fun daysLeft(m: Media, s: Settings, important: Set<Long>, start: Long, now: Long = System.currentTimeMillis()): Int? {
+        if (m.id in important || m.external != null) return null
+        val c = m.chat
+        return when {
+            m.isScreenshot && s.shotAutoTrash && m.taken >= start -> Rules.daysLeft(m.taken, now, s.shotDays)
+            !m.isScreenshot && c != null && ruleOn(s, c) && m.added >= start -> Rules.daysLeft(m.added, now, s.chatDays)
+            else -> null
+        }
+    }
+
     fun plan(lib: Library, s: Settings, important: Set<Long>, start: Long, now: Long = System.currentTimeMillis()): DuePlan {
         val shots = if (s.shotAutoTrash) Rules.due(lib.screenshots, now, s.shotDays, important, start, { it.id }, { it.taken }) else emptyList()
         val chats = lib.items.filter { it.chat != null }

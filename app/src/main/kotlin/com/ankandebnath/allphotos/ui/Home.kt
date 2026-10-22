@@ -1,6 +1,11 @@
 package com.ankandebnath.allphotos.ui
 
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -99,7 +104,8 @@ fun Home(app: AppState) {
         }
     }
 
-    // Back from a page: the page shrinks with the gesture, then closes. From another tab: go to Photos.
+    // Back from a page: the page shrinks with the gesture, then slides away. From another tab: go to Photos.
+    val leaveBack = remember { mutableFloatStateOf(0f) }
     PredictiveBackHandler(enabled = app.stack.isNotEmpty() || (app.tab != 0 && app.viewer == null)) { progress ->
         val onPage = app.stack.isNotEmpty()
         try {
@@ -107,16 +113,34 @@ fun Home(app: AppState) {
                 swipeEdge[0] = if (e.swipeEdge == 0) 1f else -1f
                 if (onPage && !motion.minimal) back.snapTo(e.progress)
             }
-            app.back()
+            // The leaving page keeps the size the gesture gave it while it slides out.
+            leaveBack.floatValue = back.value
             back.snapTo(0f)
+            app.back()
         } catch (e: CancellationException) {
             scope.launch { back.animateTo(0f) }
             throw e
         }
     }
+    LaunchedEffect(app.stack.size) {
+        kotlinx.coroutines.delay(700)
+        leaveBack.floatValue = 0f
+    }
+    // The tabs drift left under the first page, like the page below any other page.
+    val under by animateFloatAsState(
+        if (app.stack.isEmpty() || motion.minimal) 0f else 1f,
+        if (app.stack.isEmpty()) motion.slideOut() else motion.slideIn(),
+        label = "under",
+    )
+    val scrim = MaterialTheme.colorScheme.scrim
 
     Box(Modifier.fillMaxSize().background(bg)) {
-        AnimatedContent(targetState = app.tab, transitionSpec = { motion.tab() }, label = "tabs") { t ->
+        AnimatedContent(
+            targetState = app.tab,
+            transitionSpec = { motion.tab() },
+            label = "tabs",
+            modifier = Modifier.graphicsLayer { translationX = -size.width * motion.parallax * under },
+        ) { t ->
             holder.SaveableStateProvider("tab$t") {
                 when (t) {
                     0 -> PhotosTab(lib, loading, app, actions, states.photos, bottom)
@@ -149,33 +173,51 @@ fun Home(app: AppState) {
                     if (app.tab == i) scope.launchScrollTop(states, i)
                     app.tab = i
                 },
-                onSearch = { app.open(Dest.Search) },
             )
         }
 
         // Pages opened on top of the tabs.
         AnimatedContent(
             targetState = app.stack.toList(),
-            transitionSpec = { if (targetState.size > initialState.size) motion.pageOpen() else motion.pageClose() },
+            transitionSpec = {
+                val z = targetState.size.toFloat()
+                (if (targetState.size > initialState.size) motion.pageOpen() else motion.pageClose()).apply { targetContentZIndex = z }
+            },
             label = "pages",
         ) { list ->
             val d = list.lastOrNull()
             if (d != null) {
                 val isTop = list.size == app.stack.size
+                val leaving = list.size > app.stack.size
+                // A soft shadow over whatever is underneath, deepening as this page covers it.
+                val cover = remember { Animatable(0f) }
+                LaunchedEffect(leaving) {
+                    if (leaving) cover.animateTo(0f, motion.slideOut()) else cover.animateTo(1f, motion.slideIn())
+                }
                 Box(
                     Modifier.fillMaxSize()
+                        .drawBehind {
+                            if (!motion.minimal && cover.value > 0f) {
+                                drawRect(scrim.copy(alpha = 0.32f * cover.value), topLeft = Offset(-size.width * 2f, 0f), size = Size(size.width * 2f, size.height))
+                            }
+                        }
                         .graphicsLayer {
-                            if (isTop) {
-                                val p = back.value
+                            val p = when {
+                                isTop -> back.value
+                                leaving -> leaveBack.floatValue
+                                else -> 0f
+                            }
+                            if (p > 0f) {
                                 val s = 1f - 0.1f * p
                                 scaleX = s
                                 scaleY = s
                                 translationX = swipeEdge[0] * p * with(density) { 24.dp.toPx() }
                                 transformOrigin = TransformOrigin(if (swipeEdge[0] > 0) 0.9f else 0.1f, 0.5f)
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape((p * 32).dp)
-                                clip = p > 0f
+                                clip = true
                             } else {
                                 shape = RectangleShape
+                                clip = false
                             }
                         }
                         .background(bg),

@@ -115,10 +115,7 @@ fun ScreenshotsTab(lib: Library, app: AppState, actions: Actions, state: LazyGri
     }
     val shots = lib.screenshots
     val segments = listOf("Recent", "Apps", "Websites", "Important")
-    val sub = buildString {
-        append("${shots.size} · ${Fmt.size(shots.sumOf { it.size })}")
-        if (s.shotAutoTrash) append(" · new ones cleaned after ${s.shotDays} days")
-    }
+    val sub = "${shots.size} · ${Fmt.size(shots.sumOf { it.size })}"
     val header: @Composable () -> Unit = {
         Column {
             Segmented(segments, seg) { seg = it }
@@ -129,7 +126,7 @@ fun ScreenshotsTab(lib: Library, app: AppState, actions: Actions, state: LazyGri
         }
     }
     val trailing: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
-        SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) }
+        TabActions(app)
     }
     val badge: @Composable BoxScope.(Media) -> Unit = { m -> ExpiryBadge(m) }
 

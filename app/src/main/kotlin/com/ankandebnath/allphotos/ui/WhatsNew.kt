@@ -9,6 +9,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoDelete
 import androidx.compose.material.icons.rounded.Animation
+import androidx.compose.material.icons.rounded.FolderZip
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Description
@@ -33,16 +37,15 @@ class Change(val icon: ImageVector, val title: String, val detail: String)
 
 /** What changed in each version. Shown once after an update. */
 object WhatsNew {
-    const val VERSION = 2
-    const val NAME = "1.1"
+    const val VERSION = 3
+    const val NAME = "1.2"
 
     val changes = listOf(
-        Change(Icons.Rounded.AutoDelete, "Clean-up starts from install day", "Screenshots and chat files from before you installed All Photos are never cleaned up. Older files that were moved to the trash are back."),
-        Change(Icons.Rounded.Animation, "Smoother everywhere", "Photos grow out of the grid and shrink back when you swipe down. Pages scale with the back gesture. Pick Minimal, Standard or Rich in Settings."),
-        Change(Icons.Rounded.TextFields, "Copy text from photos", "Tap Text in the viewer, then tap any line to copy it, call a number or open a link. Works offline."),
-        Change(Icons.Rounded.Description, "Documents", "Receipts, payment cards, IDs, tickets, notes, books and menus are sorted for you in Albums."),
-        Change(Icons.Rounded.AutoAwesome, "New filters", "Vivid, Dramatic and black-and-white filters inspired by the iPhone, more adjustments, and filters for videos."),
-        Change(Icons.Rounded.CleaningServices, "Tidier viewer and video player", "Fewer buttons, the star and source in the top bar, smooth scrubbing, and stacks for similar photos."),
+        Change(Icons.Rounded.HourglassBottom, "Countdown on screenshots", "Open a screenshot (or a chat file) to see how many days are left before it moves to the trash. Tap it to keep the file."),
+        Change(Icons.Rounded.Animation, "Pages slide in", "Settings and every other page slide in from the side over the one you were on, the way Google Photos does."),
+        Change(Icons.Rounded.Search, "Search at the top", "Search sits next to Settings at the top of every tab, and the tabs at the bottom stay still with their names showing."),
+        Change(Icons.Rounded.PlayCircle, "Better videos", "Tap a video to show or hide its controls, and swipe down to go back to the grid, just like photos."),
+        Change(Icons.Rounded.FolderZip, "Preview large files", "In Large files, tap a thumbnail to play or view it before you pick it."),
     )
 }
 

@@ -102,7 +102,7 @@ fun AlbumsTab(lib: Library, app: AppState, state: LazyGridState, bottom: Dp) {
             Column {
                 PageHeader(
                     "Albums", "${albums.size} folders",
-                    trailing = { SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) } },
+                    trailing = { TabActions(app) },
                 )
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     shortcuts.forEachIndexed { i, sc ->

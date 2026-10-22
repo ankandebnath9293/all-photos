@@ -74,7 +74,7 @@ fun PhotosTab(lib: Library, loading: Boolean, app: AppState, actions: Actions, s
         actions = actions,
         bottom = bottom,
         state = state,
-        trailing = { SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) } },
+        trailing = { TabActions(app) },
         empty = { NoPhotos("No photos yet") },
         stacks = stacks.counts,
         viewerItems = if (stacks.hidden.isEmpty()) null else lib.items,

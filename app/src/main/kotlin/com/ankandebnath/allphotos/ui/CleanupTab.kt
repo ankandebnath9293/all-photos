@@ -90,8 +90,8 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
     ) {
         item {
             PageHeader(
-                "Cleanup", "${Fmt.size(lib.totalBytes)} of photos and videos",
-                trailing = { SmallIconButton(Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) } },
+                "Cleanup", null,
+                trailing = { TabActions(app) },
             )
         }
         item { StorageCard(lib, wa.sumOf { it.size }, tg.sumOf { it.size }, fb.sumOf { it.size }) }

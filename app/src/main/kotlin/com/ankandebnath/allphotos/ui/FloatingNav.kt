@@ -7,6 +7,15 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -40,54 +49,61 @@ import androidx.compose.ui.unit.dp
 class NavTab(val label: String, val on: ImageVector, val off: ImageVector)
 
 /**
- * The floating bottom bar: a pill of tabs that the photos scroll behind, with the search button
- * beside it. The chosen tab grows to show its name.
+ * The floating bottom bar: a pill of four fixed tabs that the photos scroll behind. Every tab keeps
+ * its icon and name; the chosen one gets a soft highlight behind its icon.
  */
 @Composable
-fun FloatingNav(tabs: List<NavTab>, selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, modifier: Modifier = Modifier) {
+fun FloatingNav(tabs: List<NavTab>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val motion = LocalMotion.current
     val haptics = LocalHapticFeedback.current
-    Row(modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = c.surfaceContainerHigh.copy(alpha = 0.94f),
-            shadowElevation = 10.dp,
-            tonalElevation = 2.dp,
-        ) {
-            Row(Modifier.height(62.dp).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                tabs.forEachIndexed { i, t ->
-                    val on = i == selected
-                    val bg by animateColorAsState(if (on) c.secondaryContainer else c.secondaryContainer.copy(alpha = 0f), motion.quick(), label = "tabbg")
-                    val fg by animateColorAsState(if (on) c.onSecondaryContainer else c.onSurfaceVariant, motion.quick(), label = "tabfg")
-                    Row(
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = c.surfaceContainerHigh.copy(alpha = 0.95f),
+        shadowElevation = 10.dp,
+        tonalElevation = 2.dp,
+        modifier = modifier.padding(horizontal = 20.dp).widthIn(max = 460.dp).fillMaxWidth(),
+    ) {
+        Row(Modifier.height(66.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            tabs.forEachIndexed { i, t ->
+                val on = i == selected
+                val bg by animateColorAsState(if (on) c.secondaryContainer else c.secondaryContainer.copy(alpha = 0f), motion.quick(), label = "tabbg")
+                val fg by animateColorAsState(if (on) c.onSurface else c.onSurfaceVariant, motion.quick(), label = "tabfg")
+                val pill by animateFloatAsState(if (on) 1f else 0.6f, motion.quick(), label = "tabpill")
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .clip(RoundedCornerShape(50))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple()) {
+                            if (!on) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(i)
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Box(
                         Modifier
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(bg)
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple()) {
-                                if (!on) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onSelect(i)
-                            }
-                            .animateContentSize(motion.quick())
-                            .padding(horizontal = if (on) 16.dp else 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .height(30.dp)
+                            .width(56.dp)
+                            .drawBehind {
+                                val w = size.width * pill
+                                drawRoundRect(bg, topLeft = Offset((size.width - w) / 2f, 0f), size = Size(w, size.height), cornerRadius = CornerRadius(size.height / 2f))
+                            },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(if (on) t.on else t.off, t.label, tint = fg)
-                        AnimatedVisibility(on, enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
-                            Text(t.label, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
-                        }
+                        Icon(if (on) t.on else t.off, null, tint = if (on) c.onSecondaryContainer else fg, modifier = Modifier.size(22.dp))
                     }
+                    Text(
+                        t.label,
+                        color = fg,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
                 }
             }
-        }
-        Surface(
-            shape = CircleShape,
-            color = c.primaryContainer,
-            shadowElevation = 10.dp,
-            modifier = Modifier.size(58.dp).clip(CircleShape).clickable(onClick = onSearch),
-        ) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Search, "Search", tint = c.onPrimaryContainer, modifier = Modifier.size(26.dp)) }
         }
     }
 }

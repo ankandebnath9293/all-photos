@@ -293,3 +293,10 @@ fun Modifier.pageBackground(): Modifier = this.background(MaterialTheme.colorSch
 fun SmallIconButton(icon: ImageVector, desc: String, onClick: () -> Unit) {
     IconButton(onClick = onClick) { Icon(icon, desc, modifier = Modifier.size(24.dp)) }
 }
+
+/** Search and settings, at the top right of every tab. */
+@Composable
+fun TabActions(app: AppState) {
+    SmallIconButton(androidx.compose.material.icons.Icons.Rounded.Search, "Search") { app.open(Dest.Search) }
+    SmallIconButton(androidx.compose.material.icons.Icons.Rounded.Settings, "Settings") { app.open(Dest.Settings) }
+}

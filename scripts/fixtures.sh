@@ -47,6 +47,8 @@ ffmpeg -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=30 -f lavfi -i si
 ffmpeg -loglevel error -f lavfi -i testsrc=size=1920x1080:rate=24 -f lavfi -i sine=frequency=220 \
   -t 3 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$F/iphone/IMG_0042.MOV"
 ffmpeg -loglevel error -f lavfi -i testsrc=size=640x360:rate=30 -t 2 -c:v libx264 -pix_fmt yuv420p "$F/whatsapp_video/VID-20260901-WA0003.mp4"
+# A big one (over 10 MB) for the Large files page.
+ffmpeg -loglevel error -f lavfi -i testsrc2=size=1920x1080:rate=30 -t 4 -vf "noise=alls=40:allf=t" -c:v libx264 -preset veryfast -pix_fmt yuv420p -b:v 28M -maxrate 28M -bufsize 28M -x264-params nal-hrd=cbr "$F/camera/PXL_20261018_090000.mp4"
 ffmpeg -loglevel error -f lavfi -i testsrc=size=640x360:rate=25 -t 2 -c:v libx264 -pix_fmt yuv420p "$F/telegram_video/video_2026-09-01.mp4"
 
 # An iPhone-style HEIC photo, when the encoder is available.

@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -216,7 +218,7 @@ fun LargeFilesScreen(lib: Library, app: AppState, actions: Actions, bottom: Dp, 
     }
     var picked by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val pickedItems = remember(picked, list) { list.filter { it.id in picked } }
-    val px = with(LocalDensity.current) { 72.dp.roundToPx() }
+    val px = with(LocalDensity.current) { 96.dp.roundToPx() }
     val c = MaterialTheme.colorScheme
     BackHandler(enabled = picked.isNotEmpty()) { picked = emptySet() }
 
@@ -243,9 +245,21 @@ fun LargeFilesScreen(lib: Library, app: AppState, actions: Actions, bottom: Dp, 
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.size(64.dp).clip(RoundedCornerShape(14.dp))) {
+                    // The thumbnail opens a preview (videos play); the rest of the row picks the file.
+                    Box(
+                        Modifier.size(72.dp)
+                            .heroSource(m.id)
+                            .graphicsLayer { alpha = if (HeroBounds.hidden == m.id) 0f else 1f }
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(onClickLabel = "Preview") { app.view(list, i) },
+                    ) {
                         Thumb(m, px, Modifier.fillMaxSize())
-                        if (m.isVideo) VideoBadge(m.durationMs, Modifier.align(Alignment.BottomCenter).padding(3.dp))
+                        if (m.isVideo) {
+                            Box(
+                                Modifier.align(Alignment.Center).size(30.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
+                                contentAlignment = Alignment.Center,
+                            ) { Icon(Icons.Rounded.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(20.dp)) }
+                        }
                     }
                     GapW(12.dp)
                     Column(Modifier.weight(1f)) {
