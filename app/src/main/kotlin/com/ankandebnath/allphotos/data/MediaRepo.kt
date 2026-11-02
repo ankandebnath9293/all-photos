@@ -35,6 +35,17 @@ object MediaRepo {
     private var observer: ContentObserver? = null
     private var pending: Job? = null
 
+    /**
+     * Set when photos changed while no screen of the app was open. Reading the whole library then
+     * would only cost battery (the app is often kept running by the screenshot watcher), so the read
+     * waits until a screen opens or a background job actually needs the library.
+     */
+    @Volatile private var stale = false
+
+    /** True while any screen of the app is on show. */
+    @Volatile var visible = false
+        private set
+
     /** The library, or null until the first read finishes. */
     val library: StateFlow<Library?> = state.asStateFlow()
 
@@ -124,21 +135,48 @@ object MediaRepo {
     suspend fun refresh(ctx: Context) = withContext(Dispatchers.IO) {
         loading.withLock {
             val t0 = System.currentTimeMillis()
+            // Cleared before reading, so a change that lands during the read marks it stale again.
+            stale = false
             val items = runCatching { query(ctx.applicationContext, trashed = false) }
-                .onFailure { Log.w(TAG, "Library read failed", it) }
+                .onFailure { Log.w(TAG, "Library read failed", it); stale = true }
                 .getOrNull() ?: return@withLock
             state.value = Library(items)
             Log.i(TAG, "Library: ${items.size} items in ${System.currentTimeMillis() - t0} ms")
         }
     }
 
-    /** Starts following changes to the phone's photos. */
-    fun start(ctx: Context) {
+    /** For background work: the library as it is now, read again only if it changed since the last read. */
+    suspend fun ensureFresh(ctx: Context) {
+        if (state.value == null || stale) refresh(ctx)
+    }
+
+    /** A screen of the app opened or the last one closed. */
+    fun setVisible(ctx: Context, on: Boolean) {
+        visible = on
+        if (on && (stale || state.value == null)) {
+            val app = ctx.applicationContext
+            scope.launch {
+                refresh(app)
+                trashTick.value++
+            }
+        }
+    }
+
+    /**
+     * Starts following changes to the phone's photos. [readNow] is false when the app is only being
+     * started in the background (by the screenshot watcher); the first read then waits until needed.
+     */
+    fun start(ctx: Context, readNow: Boolean = true) {
         val app = ctx.applicationContext
         if (observer == null) {
             val thread = HandlerThread("media-watch").apply { start() }
             val obs = object : ContentObserver(Handler(thread.looper)) {
                 override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    if (!visible) {
+                        // Nobody is looking: just remember to read again later.
+                        stale = true
+                        return
+                    }
                     // Many changes arrive in a burst (a camera save, a big delete); read once after it settles.
                     pending?.cancel()
                     pending = scope.launch {
@@ -148,10 +186,14 @@ object MediaRepo {
                     }
                 }
             }
-            runCatching { app.contentResolver.registerContentObserver(filesUri, true, obs) }
+            // Only photos and videos: the library never shows other files, so their changes are not worth waking up for.
+            runCatching {
+                app.contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, obs)
+                app.contentResolver.registerContentObserver(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, obs)
+            }
             observer = obs
         }
-        scope.launch { refresh(app) }
+        if (readNow || visible) scope.launch { refresh(app) } else stale = true
     }
 
     suspend fun trashed(ctx: Context): List<Media> = withContext(Dispatchers.IO) {

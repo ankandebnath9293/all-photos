@@ -1,7 +1,9 @@
 package com.ankandebnath.allphotos
 
+import android.app.Activity
 import android.app.Application
 import android.content.ComponentCallbacks2
+import android.os.Bundle
 import android.os.Environment
 import com.ankandebnath.allphotos.capture.ShotWatch
 import com.ankandebnath.allphotos.data.Db
@@ -22,12 +24,14 @@ class App : Application() {
         super.onCreate()
         Notifier.channels(this)
         scope.launch(Dispatchers.IO) { runCatching { Db.get(this@App).warm() } }
-        if (Access.storage(this)) start()
+        registerActivityLifecycleCallbacks(ScreenCounter())
+        // The process is often started in the background (by the screenshot watcher), so the library is read when a screen opens.
+        if (Access.storage(this)) start(readNow = false)
     }
 
     /** Starts reading the library and the background jobs, once storage access is granted. */
-    fun start() {
-        MediaRepo.start(this)
+    fun start(readNow: Boolean = true) {
+        MediaRepo.start(this, readNow)
         ShotWatch.start(this)
         // Marks where screenshot handling starts, so only new screenshots get a notification.
         scope.launch(Dispatchers.IO) { runCatching { com.ankandebnath.allphotos.capture.ShotTracker.process(this@App) } }
@@ -40,6 +44,23 @@ class App : Application() {
                 Prefs.get(this@App).restoredCount = 0
             }
         }
+    }
+
+    /** Tells the library whether any screen of the app is on show. */
+    private inner class ScreenCounter : ActivityLifecycleCallbacks {
+        private var started = 0
+        override fun onActivityStarted(a: Activity) {
+            if (started++ == 0) MediaRepo.setVisible(this@App, true)
+        }
+        override fun onActivityStopped(a: Activity) {
+            started = (started - 1).coerceAtLeast(0)
+            if (started == 0) MediaRepo.setVisible(this@App, false)
+        }
+        override fun onActivityCreated(a: Activity, b: Bundle?) {}
+        override fun onActivityResumed(a: Activity) {}
+        override fun onActivityPaused(a: Activity) {}
+        override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
+        override fun onActivityDestroyed(a: Activity) {}
     }
 
     override fun onTrimMemory(level: Int) {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoDelete
+import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Animation
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.PlayCircle
@@ -37,15 +38,11 @@ class Change(val icon: ImageVector, val title: String, val detail: String)
 
 /** What changed in each version. Shown once after an update. */
 object WhatsNew {
-    const val VERSION = 3
-    const val NAME = "1.2"
+    const val VERSION = 4
+    const val NAME = "1.2.1"
 
     val changes = listOf(
-        Change(Icons.Rounded.HourglassBottom, "Countdown on screenshots", "Open a screenshot (or a chat file) to see how many days are left before it moves to the trash. Tap it to keep the file."),
-        Change(Icons.Rounded.Animation, "Pages slide in", "Settings and every other page slide in from the side over the one you were on, the way Google Photos does."),
-        Change(Icons.Rounded.Search, "Search at the top", "Search sits next to Settings at the top of every tab, and the tabs at the bottom stay still with their names showing."),
-        Change(Icons.Rounded.PlayCircle, "Better videos", "Tap a video to show or hide its controls, and swipe down to go back to the grid, just like photos."),
-        Change(Icons.Rounded.FolderZip, "Preview large files", "In Large files, tap a thumbnail to play or view it before you pick it."),
+        Change(Icons.Rounded.BatteryChargingFull, "Lighter on battery", "The screenshot watcher now only follows the screen closely while a browser is open, and the app no longer re-reads your whole library in the background. Everything works the same."),
     )
 }
 

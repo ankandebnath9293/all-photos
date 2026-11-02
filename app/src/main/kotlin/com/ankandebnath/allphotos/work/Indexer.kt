@@ -122,7 +122,7 @@ object Indexer {
     suspend fun run(ctx: Context, heavy: Boolean, stop: () -> Boolean): Boolean = lock.withLock {
         withContext(Dispatchers.IO) {
             val app = ctx.applicationContext
-            if (MediaRepo.library.value == null) MediaRepo.refresh(app)
+            MediaRepo.ensureFresh(app)
             val db = Db.get(app)
             db.warm()
             state.value = IndexState(running = true, what = "Starting")

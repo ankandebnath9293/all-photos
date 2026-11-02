@@ -62,7 +62,7 @@ object Cleaner {
     suspend fun run(ctx: Context): Int {
         val app = ctx.applicationContext
         restoreEarly(app)
-        if (MediaRepo.library.value == null) MediaRepo.refresh(app)
+        MediaRepo.ensureFresh(app)
         val lib = MediaRepo.library.value ?: return 0
         val prefs = Prefs.get(app)
         val db = Db.get(app)

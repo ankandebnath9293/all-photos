@@ -27,7 +27,7 @@ class ActionReceiver : BroadcastReceiver() {
                         Notifier.confirm(app, if (ids.size == 1) "Marked as important" else "${ids.size} screenshots marked as important")
                     }
                     ACTION_TRASH -> {
-                        if (MediaRepo.library.value == null) MediaRepo.refresh(app)
+                        MediaRepo.ensureFresh(app)
                         val items = ids.mapNotNull { MediaRepo.now.byId[it] }
                         val r = Ops.trash(app, items, allowDialog = false)
                         if (r.done > 0) Notifier.confirm(app, "Moved to trash") else Notifier.cancel(app)
