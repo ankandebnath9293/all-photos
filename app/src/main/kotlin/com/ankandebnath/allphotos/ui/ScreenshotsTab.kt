@@ -79,7 +79,8 @@ fun BoxScope.ExpiryBadge(m: Media) {
     val left = Rules.daysLeft(m.taken, System.currentTimeMillis(), s.shotDays)
     if (left in 0..7) {
         SmallTag(
-            if (left <= 1) "Today" else "${left}d",
+            // Matches the viewer's countdown: 0 is today, 1 is tomorrow.
+            if (left <= 0) "Today" else "${left}d",
             Modifier.align(Alignment.BottomStart).padding(5.dp),
             bg = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
             fg = MaterialTheme.colorScheme.onErrorContainer,

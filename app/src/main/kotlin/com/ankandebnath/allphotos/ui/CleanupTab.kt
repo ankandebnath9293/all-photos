@@ -77,7 +77,8 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
     val trash by produceState(emptyList<com.ankandebnath.allphotos.data.Media>(), tick) { value = MediaRepo.trashed(ctx) }
     val similar by produceState<SimilarData.Summary?>(null, lib) { value = SimilarData.compute(ctx.applicationContext, lib) }
     val c = MaterialTheme.colorScheme
-    val big = remember(lib) { lib.items.filter { it.size >= 100L * 1024 * 1024 } }
+    // Same threshold as the Large files page, so the card's count matches what the page lists.
+    val big = remember(lib) { lib.items.filter { it.size >= 10L * 1024 * 1024 } }
     val wa = remember(lib) { lib.items.filter { it.chat == Chat.WHATSAPP } }
     val tg = remember(lib) { lib.items.filter { it.chat == Chat.TELEGRAM } }
     val fb = remember(lib) { lib.items.filter { it.chat == Chat.FACEBOOK } }
@@ -114,7 +115,7 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
             ToolCard(
                 Icons.Rounded.FolderZip, MaterialShapes.Cookie9Sided.toShape(), c.secondaryContainer, c.onSecondaryContainer,
                 "Large files",
-                if (big.isEmpty()) "Nothing over 100 MB" else "${big.size} over 100 MB · ${Fmt.size(big.sumOf { it.size })}",
+                if (big.isEmpty()) "Nothing over 10 MB" else "${big.size} over 10 MB · ${Fmt.size(big.sumOf { it.size })}",
             ) { app.open(Dest.Large) }
         }
         item {

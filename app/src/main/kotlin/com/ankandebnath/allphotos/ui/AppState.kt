@@ -13,6 +13,8 @@ import com.ankandebnath.allphotos.data.Media
 import com.ankandebnath.allphotos.data.MediaRepo
 import com.ankandebnath.allphotos.data.OpResult
 import com.ankandebnath.allphotos.data.Ops
+import com.ankandebnath.allphotos.data.Prefs
+import com.ankandebnath.allphotos.work.Cleaner
 import com.ankandebnath.allphotos.media.Convert
 import com.ankandebnath.allphotos.media.Share
 import kotlinx.coroutines.CoroutineScope
@@ -96,8 +98,20 @@ class Actions(private val ctx: Context, private val scope: CoroutineScope, priva
 
     fun restore(items: List<Media>, after: () -> Unit = {}) {
         scope.launch {
+            // A file a clean-up rule already counts as due would go straight back to the trash on the
+            // next clean-up, so restoring it by hand also marks it important (which keeps it for good).
+            val kept = withContext(Dispatchers.IO) {
+                val db = Db.get(ctx).also { it.warm() }
+                val prefs = Prefs.get(ctx)
+                val due = items.filter { Cleaner.daysLeft(it, prefs.now, db.important.value, prefs.rulesStart) == 0 }
+                if (due.isNotEmpty()) db.setImportant(due.map { it.id }, true)
+                due.size
+            }
             val r = Ops.restore(ctx, items)
-            handle(r) { n -> if (n == 1) "Restored" else "Restored $n" }
+            handle(r) { n ->
+                val base = if (n == 1) "Restored" else "Restored $n"
+                if (kept > 0) "$base · kept from clean-up" else base
+            }
             after()
         }
     }

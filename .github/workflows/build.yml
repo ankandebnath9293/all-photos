@@ -90,7 +90,8 @@ jobs:
 
   publish:
     needs: [build, smoke]
-    if: always() && needs.build.result == 'success'
+    # Only main updates the builds branch the phone installs from; test branches keep their results in the run.
+    if: always() && needs.build.result == 'success' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
