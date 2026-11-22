@@ -36,6 +36,12 @@ class App : Application() {
         // Marks where screenshot handling starts, so only new screenshots get a notification.
         scope.launch(Dispatchers.IO) { runCatching { com.ankandebnath.allphotos.capture.ShotTracker.process(this@App) } }
         if (Prefs.get(this).now.onboarded) Work.schedule(this)
+        // An original whose "Replace original" was cut short (the app was closed while saving) is put back.
+        scope.launch(Dispatchers.IO) {
+            if (runCatching { com.ankandebnath.allphotos.media.Saver.recover(this@App) }.getOrDefault(false)) {
+                com.ankandebnath.allphotos.ui.Toasts.show("Put back an original that didn't finish saving")
+            }
+        }
         // Put back files version 1.0 moved to the trash from before the app was installed.
         scope.launch(Dispatchers.IO) {
             val n = runCatching { com.ankandebnath.allphotos.work.Cleaner.restoreEarly(this@App) }.getOrDefault(0)

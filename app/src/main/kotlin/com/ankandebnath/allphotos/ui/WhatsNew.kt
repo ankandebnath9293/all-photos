@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Screenshot
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -55,7 +56,8 @@ object WhatsNew {
         Change(Icons.Rounded.PlayCircle, "Smoother videos", "Videos pause when you leave the app, the screen stays awake while one plays, rotating no longer closes the viewer, and trimming loops the part you picked."),
         Change(Icons.Rounded.AutoAwesome, "Safer Similar photos", "Photos are only grouped when they look alike to every photo in the set, and look-alikes with different text (slides, pages, receipts) are no longer ticked for you."),
         Change(Icons.Rounded.AutoDelete, "Clean-up fixes", "A file you restore from the trash stays restored, edited copies of screenshots and chat photos are saved to All Photos instead of being cleaned up, and \"Delete all\" on a notification keeps screenshots you starred."),
-        Change(Icons.Rounded.CleaningServices, "Fewer glitches", "Edits and trims show straight away, the grid never opens the wrong photo while it updates, and very large photos are never replaced with a smaller copy."),
+        Change(Icons.Rounded.CleaningServices, "Fewer glitches", "Edits and trims show straight away, the grid never opens the wrong photo while it updates, and very large photos are never replaced with a smaller copy. \"Replace original\" keeps a backup while it saves, so closing the app halfway can't damage the original."),
+        Change(Icons.Rounded.Screenshot, "Better screenshot labels", "Screenshots taken with Circle to Search or chat heads open, or from Recents, are labelled with the app underneath."),
     )
 }
 

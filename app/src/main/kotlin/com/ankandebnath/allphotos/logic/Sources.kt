@@ -22,7 +22,7 @@ object Sources {
     /** Windows that sit on top of an app without replacing it. */
     private val ignored = setOf(
         "com.android.systemui", "android", "com.google.android.inputmethod.latin",
-        "com.samsung.android.honeyboard", "com.touchtype.swiftkey", "com.google.android.googlequicksearchbox:interactor",
+        "com.samsung.android.honeyboard", "com.touchtype.swiftkey",
         "com.android.permissioncontroller", "com.google.android.permissioncontroller",
         "com.google.android.as", "com.google.android.apps.screenshot",
     )
@@ -30,14 +30,27 @@ object Sources {
     fun isIgnored(pkg: String, ownPkg: String, keyboards: Set<String> = emptySet()): Boolean =
         pkg in ignored || pkg == ownPkg || pkg in keyboards
 
+    /** Logged when the screenshot watcher stops, so an old entry is never taken as what was on screen later. */
+    const val OFF = "(watcher off)"
+
+    /** Opening Recents shows the launcher; a screenshot this soon after leaving an app is of that app. */
+    const val RECENTS_MS = 10_000L
+
     /**
      * The app on screen when a screenshot was taken at [shotTime]: the last change before it.
      * [slackMs] covers the short gap between pressing the buttons and the file's timestamp.
      */
-    fun attribute(log: List<Foreground>, shotTime: Long, ownPkg: String, slackMs: Long = 800, keyboards: Set<String> = emptySet()): Foreground? =
-        log.asSequence()
-            .filter { it.time <= shotTime + slackMs && !isIgnored(it.pkg, ownPkg, keyboards) }
-            .maxByOrNull { it.time }
+    fun attribute(log: List<Foreground>, shotTime: Long, ownPkg: String, slackMs: Long = 800, keyboards: Set<String> = emptySet()): Foreground? {
+        val before = log.filter { it.time <= shotTime + slackMs && !isIgnored(it.pkg, ownPkg, keyboards) }.sortedBy { it.time }
+        val last = before.lastOrNull() ?: return null
+        if (last.pkg == OFF) return null
+        // The Screenshot button in Recents: the launcher is in front, but the picture is of the app just left.
+        if (isLauncher(last.pkg) && shotTime - last.time <= RECENTS_MS) {
+            val prev = before.getOrNull(before.size - 2)
+            if (prev != null && prev.pkg != OFF && !isLauncher(prev.pkg)) return prev
+        }
+        return last
+    }
 
     /** Launchers mean the screenshot was of the home screen. */
     fun isLauncher(pkg: String): Boolean =

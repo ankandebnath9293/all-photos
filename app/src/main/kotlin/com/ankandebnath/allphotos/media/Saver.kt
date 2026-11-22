@@ -10,8 +10,11 @@ import androidx.exifinterface.media.ExifInterface
 import com.ankandebnath.allphotos.data.Media
 import com.ankandebnath.allphotos.data.MediaRepo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 
 /** Writes new photos and videos into the gallery, or over an existing file. */
 object Saver {
@@ -75,15 +78,68 @@ object Saver {
             }
         }
 
-    /** Replaces an existing file's contents, keeping its place in the gallery. */
+    private val overwriteLock = Mutex()
+    private fun backupDir(ctx: Context) = File(ctx.filesDir, "overwrite")
+
+    /**
+     * Replaces [target]'s contents with [file], keeping its place in the gallery. The original is first copied to the app's private storage, so a
+     * failed write, or the app being closed halfway, can never leave a damaged original: it is put
+     * back here on failure, or by [recover] the next time the app starts.
+     */
     suspend fun overwrite(ctx: Context, target: Uri, file: File): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            ctx.contentResolver.openOutputStream(target, "wt")?.use { out -> file.inputStream().use { it.copyTo(out, 1 shl 16) } }
+        overwriteLock.withLock {
+            val dir = backupDir(ctx).apply { mkdirs() }
+            val backup = File(dir, "original")
+            val note = File(dir, "target")
+            // An earlier original still waiting to be put back comes first; never overwrite its backup.
+            if (note.exists()) {
+                putBack(ctx, dir)
+                if (note.exists()) return@withLock false
+            }
+            val ok = runCatching {
+                val size = ctx.contentResolver.openAssetFileDescriptor(target, "r")?.use { it.length } ?: -1L
+                if (size > 0 && dir.usableSpace < size + 50L * 1024 * 1024) error("Not enough space for a backup")
+                ctx.contentResolver.openInputStream(target)?.use { i ->
+                    FileOutputStream(backup).use { o -> i.copyTo(o, 1 shl 16); o.fd.sync() }
+                } ?: error("Can't read the original")
+                note.writeText(target.toString())
+                ctx.contentResolver.openOutputStream(target, "wt")?.use { out -> file.inputStream().use { it.copyTo(out, 1 shl 16) } }
+                    ?: error("No output stream")
+                true
+            }.onFailure { Log.w(TAG, "Overwrite failed", it) }.getOrDefault(false)
+            if (ok) note.delete() else if (note.exists()) putBack(ctx, dir)
+            // While the note remains (putting back failed), the backup is the only copy: keep it for the next start.
+            if (!note.exists()) backup.delete()
+            if (ok) MediaRepo.refresh(ctx)
+            ok
+        }
+    }
+
+    /** Puts back an original whose replacement was cut short (the app was closed while saving). */
+    suspend fun recover(ctx: Context): Boolean = withContext(Dispatchers.IO) {
+        overwriteLock.withLock {
+            val dir = backupDir(ctx)
+            val note = File(dir, "target")
+            val fixed = note.exists() && putBack(ctx, dir)
+            if (!note.exists()) File(dir, "original").delete()
+            if (fixed) MediaRepo.refresh(ctx)
+            fixed
+        }
+    }
+
+    private fun putBack(ctx: Context, dir: File): Boolean {
+        val note = File(dir, "target")
+        val backup = File(dir, "original")
+        val done = runCatching {
+            if (!backup.exists()) return@runCatching true
+            val target = Uri.parse(note.readText())
+            ctx.contentResolver.openOutputStream(target, "wt")?.use { out -> backup.inputStream().use { it.copyTo(out, 1 shl 16) } }
                 ?: error("No output stream")
             true
-        }.onFailure { Log.w(TAG, "Overwrite failed", it) }.getOrDefault(false).also {
-            if (it) MediaRepo.refresh(ctx)
-        }
+        }.onFailure { Log.w(TAG, "Couldn't put the original back", it) }.getOrDefault(false)
+        // Keep the note on failure so the next start tries again; the original file is gone otherwise.
+        if (done) note.delete()
+        return done && backup.exists()
     }
 
     fun compress(bitmap: Bitmap, file: File, format: Bitmap.CompressFormat, quality: Int = 95): Boolean =

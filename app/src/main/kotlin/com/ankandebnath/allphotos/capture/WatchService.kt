@@ -3,9 +3,12 @@ package com.ankandebnath.allphotos.capture
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
 import com.ankandebnath.allphotos.logic.Browsers
 import com.ankandebnath.allphotos.logic.Sources
@@ -49,11 +52,34 @@ class WatchService : AccessibilityService() {
         watchContent(front != null && Browsers.isBrowser(front))
     }
 
+    private val handler = Handler(Looper.getMainLooper())
+
+    /**
+     * A second look shortly after each change: the app whose window is actually active. Overlays
+     * such as Circle to Search or chat heads send their own change but sit on top of the real app,
+     * and closing them sends nothing, so without this the overlay would be taken as the source.
+     */
+    private val recheck = Runnable {
+        val front = activeApp() ?: return@Runnable
+        if (Sources.isIgnored(front, packageName, keyboards)) return@Runnable
+        FgLog.app(this, front)
+        watchContent(Browsers.isBrowser(front))
+    }
+
+    private fun activeApp(): String? = runCatching {
+        val apps = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+        (apps.firstOrNull { it.isActive } ?: apps.firstOrNull { it.isFocused })?.root?.packageName?.toString()
+    }.getOrNull()
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         val pkg = e.packageName?.toString() ?: return
-        if (Sources.isIgnored(pkg, packageName, keyboards)) return
         val stateChange = e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        if (stateChange) {
+            handler.removeCallbacks(recheck)
+            handler.postDelayed(recheck, 1_000)
+        }
+        if (Sources.isIgnored(pkg, packageName, keyboards)) return
         if (stateChange) {
             FgLog.app(this, pkg)
             watchContent(Browsers.isBrowser(pkg))
@@ -84,6 +110,8 @@ class WatchService : AccessibilityService() {
 
     override fun onDestroy() {
         running = false
+        handler.removeCallbacks(recheck)
+        FgLog.off(this)
         // The screenshot observer belongs to the whole app (App.start also uses it), so it keeps running.
         super.onDestroy()
     }

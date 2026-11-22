@@ -4,6 +4,7 @@ import android.content.Context
 import com.ankandebnath.allphotos.data.Db
 import com.ankandebnath.allphotos.logic.Foreground
 import com.ankandebnath.allphotos.logic.Links
+import com.ankandebnath.allphotos.logic.Sources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +35,12 @@ object FgLog {
         if (pkg == lastPkg) return
         lastPkg = pkg
         add(ctx, Foreground(time, pkg, lastUrl(pkg)))
+    }
+
+    /** The watcher stopped: nothing after this moment was seen. */
+    fun off(ctx: Context, time: Long = System.currentTimeMillis()) {
+        lastPkg = Sources.OFF
+        add(ctx, Foreground(time, Sources.OFF))
     }
 
     private val urls = HashMap<String, String>()

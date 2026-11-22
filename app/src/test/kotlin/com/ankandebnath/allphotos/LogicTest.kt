@@ -245,6 +245,24 @@ class SourcesTest {
         assertNull(Sources.attribute(log, 500, own, slackMs = 0))
     }
 
+    @Test fun recentsScreenshotIsOfTheAppJustLeft() {
+        val launcher = "com.google.android.apps.nexuslauncher"
+        val log = listOf(Foreground(1_000, "com.android.chrome", "example.com"), Foreground(5_000, launcher))
+        // Seconds after opening Recents: the app shown in Recents.
+        assertEquals("com.android.chrome", Sources.attribute(log, 7_000, own)?.pkg)
+        // Long after going home: the home screen.
+        assertEquals(launcher, Sources.attribute(log, 60_000, own)?.pkg)
+        // Home screen with no app before it stays the home screen.
+        assertEquals(launcher, Sources.attribute(listOf(Foreground(5_000, launcher)), 7_000, own)?.pkg)
+    }
+
+    @Test fun nothingIsGuessedAfterTheWatcherStopped() {
+        val log = listOf(Foreground(1_000, "com.whatsapp"), Foreground(2_000, Sources.OFF))
+        assertNull(Sources.attribute(log, 3_600_000, own))
+        // Before it stopped, the app in front still counts.
+        assertEquals("com.whatsapp", Sources.attribute(log, 1_500, own, slackMs = 0)?.pkg)
+    }
+
     @Test fun keyboardsAndOwnAppAreIgnored() {
         val log = listOf(Foreground(1_000, "com.instagram.android"), Foreground(2_000, "com.google.android.inputmethod.latin"), Foreground(3_000, own))
         assertEquals("com.instagram.android", Sources.attribute(log, 4_000, own)?.pkg)
