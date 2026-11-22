@@ -2,7 +2,7 @@
 
 A personal, fully offline gallery for Android, built for a Pixel 7 with Material 3 Expressive. It shows every photo and video on the phone. It has no ads, no account and no cloud, and it doesn't even have the internet permission. It replaces the default gallery, and Google Photos can keep running alongside it for backup.
 
-**Version:** 1.2.1 (versionCode 4) · **Android:** 15 or newer (minSdk 35, targetSdk 36, compileSdk 37)
+**Version:** 1.2.2 (versionCode 5) · **Android:** 15 or newer (minSdk 35, targetSdk 36, compileSdk 37)
 
 ---
 

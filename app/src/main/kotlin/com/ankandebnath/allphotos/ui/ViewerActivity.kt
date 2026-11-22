@@ -83,12 +83,14 @@ private fun OpenedFile(uri: Uri, mime: String?, secure: Boolean, onClose: () -> 
     val actions = remember { Actions(ctx.applicationContext, scope, app) }
     val id = remember(uri) { mediaId(uri) }
     val waiting = id != null && !secure && Access.storage(ctx) && lib == null
-    val req = remember(uri, lib) {
+    // Built once, when the library first arrives. Later changes (deleting this photo) are followed by
+    // the viewer itself, which drops removed items and closes when none are left.
+    val req = remember(uri, lib == null) {
         val l = lib
         val inLib = if (id != null && l != null && !secure) l.byId[id] else null
         if (inLib != null && l != null) {
             val folder = l.items.filter { it.bucketId == inLib.bucketId }
-            ViewerReq(folder.map { it.id }, folder.indexOfFirst { it.id == inLib.id }.coerceAtLeast(0))
+            ViewerReq(folder.map { it.id }, folder.indexOfFirst { it.id == inLib.id }.coerceAtLeast(0), hero = false)
         } else {
             val m: Media = externalMedia(uri, mime)
             ViewerReq(listOf(m.id), 0, explicit = listOf(m))

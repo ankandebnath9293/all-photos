@@ -87,12 +87,20 @@ fun TrimScreen(m: Media, onClose: () -> Unit) {
         holder.player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
         onDispose { holder.release() }
     }
-    // Loop the chosen part while you adjust it.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_PAUSE) { holder.player.pause() }
+    val trimView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(holder.playing) {
+        trimView.keepScreenOn = holder.playing
+        onDispose { trimView.keepScreenOn = false }
+    }
+    // Loop the chosen part while you adjust it (read live, so moving a handle takes effect at once).
+    val loopStart by rememberUpdatedState(startMs)
+    val loopEnd by rememberUpdatedState(endMs)
     LaunchedEffect(Unit) {
         while (isActive) {
             val p = holder.player.currentPosition
             holder.position = p
-            if (holder.player.isPlaying && (p >= endMs || p < startMs - 200)) holder.seek(startMs, exact = false)
+            if (holder.player.isPlaying && (p >= loopEnd || p < loopStart - 200)) holder.seek(loopStart, exact = false)
             delay(60)
         }
     }

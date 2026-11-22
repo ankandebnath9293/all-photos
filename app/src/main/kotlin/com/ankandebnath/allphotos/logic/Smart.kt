@@ -23,6 +23,7 @@ object Smart {
             // Dates, prices and long reference numbers are not phone numbers.
             if (digits !in 7..15) continue
             if (Regex("""^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$""").matches(raw.trim())) continue
+            if (Regex("""^\d{4}[./-]\d{1,2}[./-]\d{1,2}$""").matches(raw.trim())) continue
             if (raw.count { it == '.' } > 1) continue
             out += SmartAction(SmartAction.Kind.PHONE, raw.trim().replace(Regex("""\s+"""), " "))
         }

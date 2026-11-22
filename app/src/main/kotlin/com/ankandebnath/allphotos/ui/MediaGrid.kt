@@ -80,6 +80,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
+/** A grid layout and the list it was built from. */
+private class GridSnap(val items: List<Media>, val rows: List<GridRow>)
+
 /** Which items are selected. Immutable sets keep updates cheap to compare. */
 @Stable
 class Selection {
@@ -132,14 +135,27 @@ fun MediaGrid(
     val byMonth = cols >= 5
     val motion = LocalMotion.current
     val haptics = LocalHapticFeedback.current
-    val rows by produceState(initialValue = emptyList<GridRow>(), items, byMonth, headers) {
-        value = withContext(Dispatchers.Default) {
+    // Rows are built in the background, so they are kept together with the exact list they were built
+    // from. Cells, headers and drag-select read that list, never a newer one the rows don't match yet.
+    val latestItems by rememberUpdatedState(items)
+    val grid by produceState(initialValue = GridSnap(items, emptyList()), items, byMonth, headers) {
+        val snap = items
+        val built = withContext(Dispatchers.Default) {
             if (headers) {
-                Timeline.rows(LongArray(items.size) { items[it].taken }, LongArray(items.size) { items[it].id }, byMonth)
+                Timeline.rows(LongArray(snap.size) { snap[it].taken }, LongArray(snap.size) { snap[it].id }, byMonth)
             } else {
-                items.mapIndexed { i, m -> GridRow.Cell(i, m.id) }
+                snap.mapIndexed { i, m -> GridRow.Cell(i, m.id) }
             }
         }
+        value = GridSnap(snap, built)
+    }
+    val rows = grid.rows
+    val shown = grid.items
+    /** Opens by id, so a tap during a library change opens the photo that was tapped. */
+    fun openAt(i: Int) {
+        val id = shown.getOrNull(i)?.id ?: return
+        val now = latestItems.indexOfFirst { it.id == id }
+        if (now >= 0) onOpen(now)
     }
     val offset = if (top != null) 1 else 0
     val density = LocalDensity.current
@@ -202,7 +218,7 @@ fun MediaGrid(
                         } while (ev.changes.any { it.pressed })
                     }
                 }
-                .pointerInput(rows, items) {
+                .pointerInput(rows, shown) {
                     // Long-press then drag: select everything between the first and the current photo.
                     var start = -1
                     var current = -1
@@ -223,8 +239,8 @@ fun MediaGrid(
                                 start = i
                                 current = i
                                 base = selection.ids
-                                adding = items[i].id !in base || !selection.active
-                                selection.set(listOf(items[i].id), true)
+                                adding = shown[i].id !in base || !selection.active
+                                selection.set(listOf(shown[i].id), true)
                             }
                         },
                         onDragEnd = { start = -1; autoScroll = 0f },
@@ -243,7 +259,7 @@ fun MediaGrid(
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 current = i
                                 val range = minOf(start, i)..maxOf(start, i)
-                                val ids = range.map { items[it].id }
+                                val ids = range.mapNotNull { shown.getOrNull(it)?.id }
                                 selection.ids = if (adding) base + ids else base - ids.toSet()
                             }
                         },
@@ -260,9 +276,9 @@ fun MediaGrid(
                 contentType = { if (rows[it] is GridRow.Header) "h" else "c" },
             ) { i ->
                 when (val r = rows[i]) {
-                    is GridRow.Header -> DateHeader(r, items, selection)
+                    is GridRow.Header -> DateHeader(r, shown, selection)
                     is GridRow.Cell -> {
-                        val m = items.getOrNull(r.index)
+                        val m = shown.getOrNull(r.index)
                         if (m != null) {
                             Cell(
                                 m = m,
@@ -273,7 +289,7 @@ fun MediaGrid(
                                 stack = stacks[m.id] ?: 0,
                                 badge = badge,
                                 modifier = Modifier.animateItem(fadeInSpec = null, placementSpec = motion.placement, fadeOutSpec = null),
-                                onClick = { if (selection.active) selection.toggle(m.id) else onOpen(r.index) },
+                                onClick = { if (selection.active) selection.toggle(m.id) else openAt(r.index) },
                                 onLongClick = {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     selection.set(listOf(m.id), true)
@@ -284,9 +300,9 @@ fun MediaGrid(
                 }
             }
         }
-        if (items.size > 80) {
+        if (shown.size > 80) {
             FastScroller(
-                state, items, rows, offset,
+                state, shown, rows, offset,
                 Modifier.align(Alignment.CenterEnd).padding(top = topInset + 12.dp, bottom = contentPadding.calculateBottomPadding() + 8.dp),
             )
         }

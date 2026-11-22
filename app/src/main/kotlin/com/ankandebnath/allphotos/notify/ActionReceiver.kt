@@ -28,12 +28,16 @@ class ActionReceiver : BroadcastReceiver() {
                     }
                     ACTION_TRASH -> {
                         MediaRepo.ensureFresh(app)
-                        val items = ids.mapNotNull { MediaRepo.now.byId[it] }
+                        // Screenshots starred in the app since the notification appeared are kept.
+                        val db = Db.get(app).also { it.warm() }
+                        val items = ids.filter { it !in db.important.value }.mapNotNull { MediaRepo.now.byId[it] }
                         val r = Ops.trash(app, items, allowDialog = false)
                         if (r.done > 0) Notifier.confirm(app, "Moved to trash") else Notifier.cancel(app)
                     }
                 }
                 ShotTracker.forget(ids)
+            } catch (t: Throwable) {
+                android.util.Log.w("AllPhotos", "Notification action failed", t)
             } finally {
                 done.finish()
             }

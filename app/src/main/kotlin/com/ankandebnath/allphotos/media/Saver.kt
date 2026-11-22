@@ -22,8 +22,12 @@ object Saver {
         return File.createTempFile("ap_", ".$ext", dir)
     }
 
+    /** A file to share, in its own folder (so two photos with the same name never collide). Old ones are cleared. */
     fun sharedFile(ctx: Context, name: String): File {
-        val dir = File(ctx.cacheDir, "shared").apply { mkdirs() }
+        val root = File(ctx.cacheDir, "shared").apply { mkdirs() }
+        val dayAgo = System.currentTimeMillis() - 86_400_000L
+        root.listFiles()?.filter { it.lastModified() < dayAgo }?.forEach { it.deleteRecursively() }
+        val dir = File(root, System.nanoTime().toString()).apply { mkdirs() }
         return File(dir, name)
     }
 
@@ -32,6 +36,9 @@ object Saver {
         val rp = m?.relPath.orEmpty()
         // Files inside other apps' private media folders cannot get new neighbours; use ours instead.
         if (rp.isEmpty() || rp.startsWith("Android/", ignoreCase = true)) return fallback
+        // An edited copy saved next to a screenshot or a chat file would fall under that clean-up rule
+        // (and count as a new screenshot), so it goes to our own folder instead.
+        if (m != null && (m.isScreenshot || m.chat != null)) return fallback
         return rp
     }
 

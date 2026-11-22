@@ -73,18 +73,37 @@ object ShotTracker {
     /** Screenshots older than this when first noticed (copied in, restored) get no notification. */
     private const val FRESH_MS = 5 * 60_000L
 
-    private fun newShots(ctx: Context, afterId: Long): List<NewShot> {
+    /** New screenshots after [afterId], and the id it is safe to continue from next time. */
+    private class Found(val shots: List<NewShot>, val upTo: Long)
+
+    /**
+     * One pass over every image added after [afterId]. The resume point comes from the same pass, so an
+     * image saved a moment later is never skipped. A file another app is still writing stops the pass
+     * there (it gets a lower id but appears later); one stuck for over a minute is passed over.
+     */
+    private fun newShots(ctx: Context, afterId: Long): Found {
         val out = ArrayList<NewShot>()
+        var upTo = afterId
         val proj = arrayOf(
             MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_TAKEN, MediaStore.Images.Media.DATE_ADDED,
             MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.BUCKET_DISPLAY_NAME, MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.IS_PENDING,
         )
-        ctx.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, proj,
-            "${MediaStore.Images.Media._ID} > ?", arrayOf(afterId.toString()),
-            "${MediaStore.Images.Media._ID} ASC",
-        )?.use { c ->
+        val args = android.os.Bundle().apply {
+            putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.Images.Media._ID} > ?")
+            putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(afterId.toString()))
+            putString(android.content.ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.Images.Media._ID} ASC")
+            putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+        }
+        val now = System.currentTimeMillis()
+        ctx.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, proj, args, null)?.use { c ->
             while (c.moveToNext()) {
+                if (c.getInt(6) == 1) {
+                    if (now - c.getLong(2) * 1000 < 60_000) break
+                    upTo = c.getLong(0)
+                    continue
+                }
+                upTo = c.getLong(0)
                 val rel = c.getString(3)
                 val name = c.getString(5)
                 if (!Rules.isScreenshot(rel, c.getString(4), name)) continue
@@ -93,7 +112,7 @@ object ShotTracker {
                 out += NewShot(c.getLong(0), taken, name.orEmpty())
             }
         }
-        return out
+        return Found(out, upTo)
     }
 
     private fun maxImageId(ctx: Context): Long =
@@ -126,11 +145,11 @@ object ShotTracker {
             prefs.lastShotId = runCatching { maxImageId(app) }.getOrDefault(0L)
             return@withLock
         }
-        val shots = runCatching { newShots(app, last) }.onFailure { Log.w(TAG, "Screenshot check failed", it) }.getOrNull()
+        val found = runCatching { newShots(app, last) }.onFailure { Log.w(TAG, "Screenshot check failed", it) }.getOrNull()
             ?: return@withLock
+        val shots = found.shots
         if (shots.isEmpty()) {
-            val maxId = runCatching { maxImageId(app) }.getOrDefault(last)
-            if (maxId > last) prefs.lastShotId = maxId
+            if (found.upTo > last) prefs.lastShotId = found.upTo
             return@withLock
         }
         val db = Db.get(app)
@@ -144,7 +163,7 @@ object ShotTracker {
                 fresh = true
             }
         }
-        prefs.lastShotId = maxOf(shots.maxOf { it.id }, runCatching { maxImageId(app) }.getOrDefault(0L))
+        prefs.lastShotId = found.upTo
         Work.indexSoon(app)
         val b = batch
         if (fresh && b != null && prefs.now.shotNotify) {

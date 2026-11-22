@@ -64,7 +64,8 @@ class MainActivity : ComponentActivity() {
         handleOpen(intent)
         val pick = intent.action == Intent.ACTION_PICK || intent.action == Intent.ACTION_GET_CONTENT
         val multiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
-        val pickType = intent.type.orEmpty()
+        // ACTION_PICK with a media-store address carries no type of its own; resolve it from the address.
+        val pickType = (intent.type ?: intent.resolveType(contentResolver)).orEmpty()
 
         setContent {
             val s by prefs.settings.collectAsState()

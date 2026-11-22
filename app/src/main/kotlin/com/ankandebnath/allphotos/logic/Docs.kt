@@ -48,9 +48,15 @@ object Docs {
     private val bookLabels = setOf("book", "newspaper", "magazine", "publication", "comics")
     private val noteLabels = setOf("paper", "handwriting", "whiteboard", "blackboard", "notebook", "paper product")
 
+    private val wordCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
     private fun hits(t: String, words: List<String>): Int = words.count { w ->
-        // Short words must stand alone ("tax" yes, "taxi" no).
-        if (w.length <= 4) Regex("""(?<![a-z])${Regex.escape(w)}(?![a-z])""").containsMatchIn(t) else t.contains(w)
+        // Whole words only, plurals allowed: "tax" not "taxi", "event" not "prevent", "screen" not "screenshot".
+        // "driving licen" is a stem on purpose (licence or license).
+        wordCache.getOrPut(w) {
+            val tail = if (w == "driving licen") "[a-z]*" else "(?:s|es)?(?![a-z])"
+            Regex("""(?<![a-z])${Regex.escape(w)}$tail""")
+        }.containsMatchIn(t)
     }
 
     fun classify(text: String?, labels: List<String>, isScreenshot: Boolean): DocKind? {

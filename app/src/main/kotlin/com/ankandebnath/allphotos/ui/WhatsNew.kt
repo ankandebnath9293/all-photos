@@ -38,11 +38,14 @@ class Change(val icon: ImageVector, val title: String, val detail: String)
 
 /** What changed in each version. Shown once after an update. */
 object WhatsNew {
-    const val VERSION = 4
-    const val NAME = "1.2.1"
+    const val VERSION = 5
+    const val NAME = "1.2.2"
 
     val changes = listOf(
-        Change(Icons.Rounded.BatteryChargingFull, "Lighter on battery", "The screenshot watcher now only follows the screen closely while a browser is open, and the app no longer re-reads your whole library in the background. Everything works the same."),
+        Change(Icons.Rounded.PlayCircle, "Smoother videos", "Videos pause when you leave the app, the screen stays awake while one plays, rotating no longer closes the viewer, and trimming loops the part you picked."),
+        Change(Icons.Rounded.AutoAwesome, "Safer Similar photos", "Photos are only grouped when they look alike to every photo in the set, and look-alikes with different text (slides, pages, receipts) are no longer ticked for you."),
+        Change(Icons.Rounded.AutoDelete, "Clean-up fixes", "A file you restore from the trash stays restored, edited copies of screenshots and chat photos are saved to All Photos instead of being cleaned up, and \"Delete all\" on a notification keeps screenshots you starred."),
+        Change(Icons.Rounded.CleaningServices, "Fewer glitches", "Edits and trims show straight away, the grid never opens the wrong photo while it updates, and very large photos are never replaced with a smaller copy."),
     )
 }
 

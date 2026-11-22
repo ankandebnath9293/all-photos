@@ -96,7 +96,8 @@ object Indexer {
             return
         }
         try {
-            val text = Analyze.text(b).orEmpty()
+            // A failed read (timeout, model error) is tried again next time instead of being saved as "no text".
+            val text = Analyze.text(b) ?: return
             val tags = if (labels) Analyze.labels(b).orEmpty() else emptyList()
             db.setText(m.id, text, tags.joinToString(", "), m.modified)
             if (m.isScreenshot) {

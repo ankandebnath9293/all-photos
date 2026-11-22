@@ -231,7 +231,7 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
 
     // The hero animation: from the tapped cell into place, and back out on close.
     val startId = items.getOrNull(req.start.coerceIn(0, items.lastIndex))?.id
-    val origin = remember { if (motion.minimal || req.explicit.isNotEmpty()) null else startId?.let { HeroBounds.get(it) } }
+    val origin = remember { if (motion.minimal || req.explicit.isNotEmpty() || !req.hero) null else startId?.let { HeroBounds.get(it) } }
     val enter = remember { Animatable(if (origin != null) 0f else 1f) }
     val appear = remember { Animatable(if (origin != null) 1f else 0f) }
     val drag = remember { DragOffset() }
@@ -281,11 +281,24 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
         if (chrome) c.show(WindowInsetsCompat.Type.systemBars()) else c.hide(WindowInsetsCompat.Type.systemBars())
     }
 
+    // A page that disappears (deleted while zoomed in) never reports zooming out, so start each page un-zoomed.
+    LaunchedEffect(current?.id) { zoomed = false }
+
+    // Pause when the app goes to the background or the screen turns off.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_PAUSE) { player.player.pause() }
+
+    // Keep the screen awake while a video plays, even after its controls hide.
+    DisposableEffect(player.playing) {
+        view.keepScreenOn = player.playing
+        onDispose { view.keepScreenOn = false }
+    }
+
     // Play the video on the page you land on; stop when you move to a photo.
-    LaunchedEffect(current?.id, pager.isScrollInProgress) {
+    // Keyed on the file's version too, so a trimmed "Replace original" reloads.
+    LaunchedEffect(current?.id, current?.modified, pager.isScrollInProgress) {
         if (pager.isScrollInProgress) return@LaunchedEffect
         if (current != null && current.isVideo) {
-            if (player.uri != current.uri) player.load(current, null)
+            player.load(current, null)
         } else {
             player.stop()
         }
@@ -336,12 +349,12 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
             textMode = false
             scope.launch {
                 val m = items.getOrNull(pager.currentPage)
-                if (m != null && !zoomed && !motion.minimal && req.explicit.isEmpty()) {
+                if (m != null && !zoomed && !motion.minimal && req.explicit.isEmpty() && req.hero) {
                     runCatching { app.reveal?.invoke(m.id) }
                     withFrameNanos { }
                     withFrameNanos { }
                 }
-                val target = m?.let { HeroBounds.get(it.id) }.takeIf { !zoomed && !motion.minimal && req.explicit.isEmpty() }
+                val target = m?.let { HeroBounds.get(it.id) }.takeIf { !zoomed && !motion.minimal && req.explicit.isEmpty() && req.hero }
                 val start = live()
                 val end = if (target != null) {
                     Frame.cell(screen, aspectNow, target, corner)
@@ -450,7 +463,8 @@ fun Viewer(req: ViewerReq, lib: Library, app: AppState, actions: Actions, onClos
                             val err = player.error
                             if (isCur && err != null && player.uri == m.uri) VideoError(err)
                         }
-                    } else {
+                    } else androidx.compose.runtime.key(m.modified) {
+                        // Keyed on the file's version, so "Replace original" from the editor shows the new picture.
                         ZoomImage(
                             uri = m.uri,
                             animate = m.isGif || m.mime == "image/webp",

@@ -74,6 +74,8 @@ object Cleaner {
             moved = r.done
             Log.i(TAG, "Clean-up: ${p.shots.size} screenshots, ${p.whatsapp.size} WhatsApp, ${p.telegram.size} Telegram, ${p.facebook.size} Facebook → $moved moved")
         }
+        // The app-switch log only matters for recent screenshots; keep two days of it at most.
+        runCatching { db.pruneForeground(System.currentTimeMillis() - 2 * Rules.DAY_MS) }
         val purged = runCatching { Ops.purgeExpired(app) }.getOrDefault(0)
         if (purged > 0) Log.i(TAG, "Clean-up: $purged expired trash items deleted")
         prefs.lastCleanupAt = System.currentTimeMillis()

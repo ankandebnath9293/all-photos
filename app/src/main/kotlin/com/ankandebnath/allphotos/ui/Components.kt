@@ -268,6 +268,9 @@ fun BoxScope.ToastHost(bottom: Dp) {
         if (Toasts.current.value == m) Toasts.current.value = null
         shown = null
     }
+    // The last message stays readable while the pill fades out.
+    var lastText by remember { mutableStateOf("") }
+    shown?.let { lastText = it.text }
     AnimatedVisibility(
         visible = shown != null,
         enter = fadeIn(tween(160)) + slideInVertically { it / 2 } + scaleIn(initialScale = 0.9f),
@@ -276,7 +279,7 @@ fun BoxScope.ToastHost(bottom: Dp) {
     ) {
         Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface, shadowElevation = 6.dp) {
             Text(
-                shown?.text.orEmpty(), color = MaterialTheme.colorScheme.inverseOnSurface,
+                lastText, color = MaterialTheme.colorScheme.inverseOnSurface,
                 style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
         }

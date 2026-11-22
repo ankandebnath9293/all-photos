@@ -59,10 +59,28 @@ object Export {
     }
 
     /** Only these can be written back over the original in the same format. */
-    fun canReplace(m: Media): Boolean = m.mime == "image/jpeg" || m.mime == "image/png" || m.mime == "image/webp"
+    fun canReplace(m: Media): Boolean =
+        (m.mime == "image/jpeg" || m.mime == "image/png" || m.mime == "image/webp") && !tooBig(m)
+
+    /** Above this the editor works on a smaller copy, so writing it over the original would lower its resolution. */
+    const val MAX_EDIT_PIXELS = 24_000_000L
+
+    fun tooBig(m: Media): Boolean = m.width.toLong() * m.height > MAX_EDIT_PIXELS
+
+    /** Animated WebP (a "VP8X" file with the animation flag): replacing it would keep only one frame. */
+    private fun animatedWebp(ctx: Context, m: Media): Boolean {
+        if (m.mime != "image/webp") return false
+        val head = runCatching { ctx.contentResolver.openInputStream(m.uri)?.use { it.readNBytes(21) } }.getOrNull() ?: return true
+        if (head.size < 21) return false
+        val chunk = String(head, 12, 4, Charsets.US_ASCII)
+        return chunk == "VP8X" && (head[20].toInt() and 0x02) != 0
+    }
 
     suspend fun save(ctx: Context, m: Media, e: Edit, replace: Boolean): Uri? = withContext(Dispatchers.IO) {
-        val src = Images.decodeForEdit(ctx, m.uri) ?: return@withContext null
+        val src = Images.decodeForEdit(ctx, m.uri, maxPixels = MAX_EDIT_PIXELS) ?: return@withContext null
+        // Never write a smaller or single-frame version over the original; save a copy instead.
+        val scaledDown = m.shownW > 0 && m.shownH > 0 && src.width.toLong() * src.height < m.shownW.toLong() * m.shownH * 98 / 100
+        val replace = replace && !scaledDown && !animatedWebp(ctx, m)
         val out = apply(src, e)
         if (out !== src) src.recycle()
         val (fmt, ext) = formatFor(m)

@@ -232,7 +232,8 @@ fun Home(app: AppState) {
         }
 
         val req = app.viewer
-        if (req != null) Viewer(req, lib, app, actions, onClose = { app.viewer = null })
+        // Keyed on the request, so opening a new one (say from a notification) starts a fresh viewer.
+        if (req != null) androidx.compose.runtime.key(req) { Viewer(req, lib, app, actions, onClose = { app.viewer = null }) }
 
         val ed = app.editor
         AnimatedVisibility(visible = ed != null, enter = fadeIn(tween(180)), exit = fadeOut(tween(160))) {

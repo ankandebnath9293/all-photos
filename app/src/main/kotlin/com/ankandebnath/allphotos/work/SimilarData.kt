@@ -27,7 +27,7 @@ object SimilarData {
             scanned++
             val h = s.hash ?: continue
             if (h == 0L) continue
-            cands += Candidate(m.id, m.taken, h, (s.sharp ?: 0.0) * (1 + m.width.toDouble() * m.height / 50_000_000.0), m.size)
+            cands += Candidate(m.id, m.taken, h, (s.sharp ?: 0.0) * (1 + m.width.toDouble() * m.height / 50_000_000.0), m.size, m.shownW, m.shownH)
         }
         Summary(Similar.groups(cands), scanned, photos.size)
     }

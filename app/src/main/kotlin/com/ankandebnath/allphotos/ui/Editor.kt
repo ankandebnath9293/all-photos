@@ -205,7 +205,11 @@ fun Editor(m: Media, onClose: () -> Unit) {
                                 Column {
                                     Text("Replace original")
                                     Text(
-                                        if (Export.canReplace(m)) "Only the edited photo is kept" else "Not for ${m.mime.substringAfter('/').uppercase()} — saved as a copy",
+                                        when {
+                                            Export.canReplace(m) -> "Only the edited photo is kept"
+                                            Export.tooBig(m) -> "Too large to replace without losing detail"
+                                            else -> "Not for ${m.mime.substringAfter('/').uppercase()} — saved as a copy"
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }

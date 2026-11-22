@@ -37,7 +37,8 @@ sealed interface Dest {
 enum class SetKind { VIDEOS, FAVORITES, IMPORTANT, SHOT_APP, SHOT_SITE, WHATSAPP, TELEGRAM, FACEBOOK, SCREENSHOTS, RECENT, DOCS }
 
 /** What the full-screen viewer should show: a list of items and where to start. */
-class ViewerReq(val ids: List<Long>, val start: Int, val fromTrash: Boolean = false, val explicit: List<Media> = emptyList())
+/** [hero] is false when the grid the photo came from is not on screen (opened from another app). */
+class ViewerReq(val ids: List<Long>, val start: Int, val fromTrash: Boolean = false, val explicit: List<Media> = emptyList(), val hero: Boolean = true)
 
 class EditReq(val media: Media, val trim: Boolean)
 
@@ -73,8 +74,10 @@ class AppState {
         return true
     }
 
-    fun view(items: List<Media>, index: Int) {
+    /** Opens the viewer. Only a grid passes [revealIn]; other screens must not scroll a grid on close. */
+    fun view(items: List<Media>, index: Int, revealIn: (suspend (Long) -> Unit)? = null) {
         if (items.isEmpty()) return
+        reveal = revealIn
         viewer = ViewerReq(items.map { it.id }, index.coerceIn(0, items.lastIndex))
     }
 }

@@ -208,9 +208,8 @@ fun GridPage(
                     onOpen != null -> onOpen(items, i)
                     mode == SelectMode.PICK -> onPick?.invoke(listOf(items[i]))
                     else -> {
-                        app.reveal = reveal
                         val all = viewerItems
-                        if (all != null) app.view(all, all.indexOfFirst { it.id == items[i].id }.coerceAtLeast(0)) else app.view(items, i)
+                        if (all != null) app.view(all, all.indexOfFirst { it.id == items[i].id }.coerceAtLeast(0), reveal) else app.view(items, i, reveal)
                     }
                 }
             },

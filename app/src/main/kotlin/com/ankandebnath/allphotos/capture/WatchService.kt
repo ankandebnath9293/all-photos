@@ -84,7 +84,7 @@ class WatchService : AccessibilityService() {
 
     override fun onDestroy() {
         running = false
-        ShotWatch.stop(this)
+        // The screenshot observer belongs to the whole app (App.start also uses it), so it keeps running.
         super.onDestroy()
     }
 

@@ -103,6 +103,7 @@ class PlayerHolder(ctx: Context) {
 
     var uri by mutableStateOf<Uri?>(null)
         private set
+    private var version = 0L
     var playing by mutableStateOf(false)
     /** True while the video is meant to play (even if it is briefly buffering). */
     var wantsPlay by mutableStateOf(false)
@@ -157,8 +158,11 @@ class PlayerHolder(ctx: Context) {
     /** Loads [m] if it is not already loaded, and starts it when [autoplay]. */
     fun load(m: Media?, target: Uri?, autoplay: Boolean = true) {
         val u = target ?: m?.uri ?: return
-        if (u == uri) return
+        // Same file and same version: already loaded. A new version (trimmed over the original) loads again.
+        val v = m?.modified ?: 0L
+        if (u == uri && v == version) return
         uri = u
+        version = v
         error = null
         ended = false
         ready = false
@@ -295,10 +299,6 @@ fun VideoControls(holder: PlayerHolder, m: Media?, fps: Float, onRotate: () -> U
             }
             delay(if (holder.playing) 50 else 250)
         }
-    }
-    DisposableEffect(holder.playing) {
-        view.keepScreenOn = holder.playing
-        onDispose { view.keepScreenOn = false }
     }
     LaunchedEffect(lastFrame) {
         if (lastFrame != null) {

@@ -149,6 +149,21 @@ class SimilarTest {
         assertTrue(g.first { 4L in it.ids }.exact)
     }
 
+    @Test fun noChainingAndNoChanceCopies() {
+        val a = 0x0F0F0F0F0F0F0F0FL
+        val b = a xor 0x3FFL
+        val c = b xor (0x3FFL shl 10)
+        // b is like a, c is like b, but c is not like a: a and c must never share a set.
+        val g = Similar.groups(listOf(Candidate(1, 1_000, a, 1.0, 1), Candidate(2, 2_000, b, 1.0, 1), Candidate(3, 3_000, c, 1.0, 1)))
+        assertTrue(g.none { 1L in it.ids && 3L in it.ids })
+        // A flat picture's fingerprint is not trusted as an exact copy.
+        val flat = 0b1L
+        assertTrue(Similar.groups(listOf(Candidate(4, 0, flat, 1.0, 1), Candidate(5, 90_000_000, flat, 1.0, 1))).isEmpty())
+        // The same fingerprint on a different shape is not a copy.
+        val h = 0x00FF00FF00FF00FFL
+        assertTrue(Similar.groups(listOf(Candidate(6, 0, h, 1.0, 1, 4000, 3000), Candidate(7, 90_000_000, h, 1.0, 1, 1080, 2400))).isEmpty())
+    }
+
     @Test fun sharpnessPrefersDetail() {
         val flat = IntArray(100) { 128 }
         val sharp = IntArray(100) { if ((it / 10 + it % 10) % 2 == 0) 0 else 255 }

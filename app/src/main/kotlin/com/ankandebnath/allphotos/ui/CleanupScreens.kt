@@ -98,7 +98,15 @@ fun SimilarScreen(lib: Library, app: AppState, actions: Actions, bottom: Dp, onB
     LaunchedEffect(summary) {
         val sm = summary ?: return@LaunchedEffect
         if (initialised != version) {
-            drop = sm.groups.flatMap { it.ids.drop(1) }.toSet()
+            // Photos whose words differ from the kept one (slides, pages, receipts) show different
+            // things even when they look alike, so they are left for you to tick yourself.
+            drop = withContext(Dispatchers.IO) {
+                val db = com.ankandebnath.allphotos.data.Db.get(ctx)
+                sm.groups.flatMap { g ->
+                    val keep = words(db.textOf(g.ids[0]))
+                    g.ids.drop(1).filter { id -> sameWords(keep, words(db.textOf(id))) }
+                }.toSet()
+            }
             initialised = version
         }
     }
@@ -334,4 +342,15 @@ fun TrashScreen(app: AppState, actions: Actions, bottom: Dp, onBack: () -> Unit)
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** The words read off a photo, for telling apart pictures that look alike but say different things. */
+private fun words(text: String?): Set<String> =
+    text.orEmpty().lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 2 }.toSet()
+
+/** True when two photos carry (nearly) the same text, or too little text to tell them apart. */
+private fun sameWords(a: Set<String>, b: Set<String>): Boolean {
+    if (a.size < 5 && b.size < 5) return true
+    val shared = a.intersect(b).size.toDouble()
+    return shared / (a.size + b.size - shared) >= 0.6
 }

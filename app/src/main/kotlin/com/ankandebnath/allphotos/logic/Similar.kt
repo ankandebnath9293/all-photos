@@ -1,7 +1,8 @@
 package com.ankandebnath.allphotos.logic
 
 /** A photo ready for comparison: its picture fingerprint and how sharp it is. */
-data class Candidate(val id: Long, val time: Long, val hash: Long, val score: Double, val size: Long)
+/** [width] and [height] are as shown on screen; 0 when unknown. */
+data class Candidate(val id: Long, val time: Long, val hash: Long, val score: Double, val size: Long, val width: Int = 0, val height: Int = 0)
 
 /** A set of near-identical photos. [ids] are best first; the first one is kept by default. */
 data class SimilarGroup(val ids: List<Long>, val extraBytes: Long, val exact: Boolean)
@@ -30,6 +31,14 @@ object Similar {
     }
 
     fun distance(a: Long, b: Long): Int = java.lang.Long.bitCount(a xor b)
+
+    /** Same width-to-height shape (within 1%), or unknown. */
+    private fun sameShape(a: Candidate, b: Candidate): Boolean {
+        if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) return true
+        val ra = a.width.toDouble() / a.height
+        val rb = b.width.toDouble() / b.height
+        return kotlin.math.abs(ra - rb) <= 0.01 * maxOf(ra, rb)
+    }
 
     /** How sharp a grey picture is: the variance of its Laplacian. Blurry shots score low. */
     fun sharpness(gray: IntArray, w: Int, h: Int): Double {
@@ -71,19 +80,41 @@ object Similar {
             val rb = find(b)
             if (ra != rb) parent[rb] = ra
         }
-        // Bursts: compare each photo with the ones taken shortly after it.
+        // Bursts: a photo joins a set only if it is close to EVERY photo already in it, and was taken
+        // within [gapMs] of the set's first photo. No chaining (A like B, B like C does not put A with C),
+        // so a run of slides or pages that each look a bit like the last never becomes one big set.
+        val active = ArrayList<MutableList<Int>>()
         for (i in sorted.indices) {
-            var j = i + 1
-            while (j < sorted.size && sorted[j].time - sorted[i].time <= gapMs) {
-                if (distance(sorted[i].hash, sorted[j].hash) <= maxDistance) union(i, j)
-                j++
+            active.removeAll { sorted[i].time - sorted[it[0]].time > gapMs }
+            var best: MutableList<Int>? = null
+            var bestWorst = Int.MAX_VALUE
+            for (set in active) {
+                var worst = 0
+                for (k in set) {
+                    worst = maxOf(worst, distance(sorted[i].hash, sorted[k].hash))
+                    if (worst > maxDistance) break
+                }
+                if (worst <= maxDistance && worst < bestWorst) {
+                    best = set
+                    bestWorst = worst
+                }
+            }
+            if (best != null) {
+                union(best[0], i)
+                best += i
+            } else {
+                active += mutableListOf(i)
             }
         }
-        // Exact copies: identical fingerprints, whenever they were taken.
+        // Exact copies: identical fingerprints, whenever they were taken, but only for pictures with
+        // enough detail to trust the match (plain pages, walls and sky can share a fingerprint by chance)
+        // and the same shape.
         val byHash = HashMap<Long, Int>()
         for (i in sorted.indices) {
-            val prev = byHash.putIfAbsent(sorted[i].hash, i)
-            if (prev != null && sorted[i].hash != 0L && sorted[i].hash != -1L) union(prev, i)
+            val c = sorted[i]
+            if (java.lang.Long.bitCount(c.hash) !in 8..56) continue
+            val prev = byHash.putIfAbsent(c.hash, i)
+            if (prev != null && sameShape(sorted[prev], c)) union(prev, i)
         }
         val buckets = LinkedHashMap<Int, MutableList<Candidate>>()
         for (i in sorted.indices) buckets.getOrPut(find(i)) { ArrayList() } += sorted[i]
