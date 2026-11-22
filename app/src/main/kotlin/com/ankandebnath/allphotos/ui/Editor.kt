@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -358,7 +359,7 @@ private fun BlurArea(img: ImageBitmap, look: Look, crop: CropRect, blurs: List<C
         Canvas(
             Modifier.fillMaxSize()
                 .pointerInput(crop, dw, dh) {
-                    androidx.compose.foundation.gestures.detectTapGestures { p ->
+                    detectTapGestures { p ->
                         val f = toPhoto(p)
                         val i = current.value.indexOfLast { f.x in it.l..it.r && f.y in it.t..it.b }
                         if (i >= 0) onRemove(i)
