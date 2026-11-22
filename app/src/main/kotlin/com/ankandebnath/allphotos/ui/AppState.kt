@@ -34,7 +34,7 @@ sealed interface Dest {
 }
 
 /** Ready-made collections. */
-enum class SetKind { VIDEOS, FAVORITES, IMPORTANT, SHOT_APP, SHOT_SITE, WHATSAPP, TELEGRAM, FACEBOOK, SCREENSHOTS, RECENT, DOCS }
+enum class SetKind { VIDEOS, FAVORITES, IMPORTANT, SHOT_APP, SHOT_SITE, WHATSAPP, TELEGRAM, FACEBOOK, SCREENSHOTS, RECENT, DOCS, BLURRY }
 
 /** What the full-screen viewer should show: a list of items and where to start. */
 /** [hero] is false when the grid the photo came from is not on screen (opened from another app). */
@@ -94,8 +94,21 @@ class Actions(private val ctx: Context, private val scope: CoroutineScope, priva
         if (items.isEmpty()) return
         scope.launch {
             val r = Ops.trash(ctx, items)
-            handle(r) { n -> if (n == 1) "Moved to trash" else "Moved $n to trash" }
+            r.consent?.let { app.askConsent(it) }
+            when {
+                r.done > 0 -> Toasts.show(if (r.done == 1) "Moved to trash" else "Moved ${r.done} to trash", "Undo") { undoTrash(items) }
+                r.failed > 0 -> Toasts.show("Couldn't change ${r.failed} file${if (r.failed == 1) "" else "s"}")
+            }
             after()
+        }
+    }
+
+    /** Puts back what was just moved to the trash, exactly as it was (no "kept from clean-up" mark). */
+    private fun undoTrash(items: List<Media>) {
+        scope.launch {
+            val r = Ops.restore(ctx, items)
+            r.consent?.let { app.askConsent(it) }
+            if (r.done > 0) Toasts.show(if (r.done == 1) "Put back" else "Put back ${r.done}")
         }
     }
 
@@ -151,6 +164,21 @@ class Actions(private val ctx: Context, private val scope: CoroutineScope, priva
             Toasts.show("Preparing JPG…")
             val uris = items.mapNotNull { if (it.isHeic) Convert.shareableJpg(ctx, it) else it.uri }
             if (uris.isNotEmpty()) runCatching { Share.sendUris(ctx, uris, "image/jpeg") }
+        }
+    }
+
+    /** Shares photos as smaller JPGs without their location. Videos are not changed. */
+    fun shareSmall(items: List<Media>) {
+        val photos = items.filter { !it.isVideo }
+        if (photos.isEmpty()) {
+            Toasts.show("Only photos can be made smaller")
+            return
+        }
+        scope.launch {
+            Toasts.show(if (photos.size == 1) "Making it smaller…" else "Making ${photos.size} photos smaller…")
+            val uris = photos.mapNotNull { Convert.shareableSmall(ctx, it) }
+            if (uris.isEmpty()) Toasts.show("Couldn't prepare the photos")
+            else runCatching { Share.sendUris(ctx, uris, "image/jpeg") }
         }
     }
 

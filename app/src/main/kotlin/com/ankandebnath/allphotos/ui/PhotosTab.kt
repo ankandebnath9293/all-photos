@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 @Composable
-fun PhotosTab(lib: Library, loading: Boolean, app: AppState, actions: Actions, state: LazyGridState, bottom: androidx.compose.ui.unit.Dp) {
+fun PhotosTab(full: Library, loading: Boolean, app: AppState, actions: Actions, state: LazyGridState, bottom: androidx.compose.ui.unit.Dp) {
     if (loading) {
         Column(Modifier.fillMaxSize()) {
             PageHeader("Photos", null)
@@ -61,6 +61,10 @@ fun PhotosTab(lib: Library, loading: Boolean, app: AppState, actions: Actions, s
     }
     val ctx = LocalContext.current
     val s by remember { com.ankandebnath.allphotos.data.Prefs.get(ctx) }.settings.collectAsState()
+    // Folders switched off in Settings are left out of this tab only.
+    val lib = remember(full, s.photosHidden) {
+        if (s.photosHidden.isEmpty()) full else Library(full.items.filter { it.bucketId !in s.photosHidden })
+    }
     val stacks by produceState(Stacks.NONE, lib, s.stackSimilar) {
         value = if (s.stackSimilar) Stacks.compute(ctx.applicationContext, lib) else Stacks.NONE
         HeroBounds.alias = value.alias

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AutoAwesomeMosaic
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Screenshot
@@ -78,6 +79,7 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
     val similar by produceState<SimilarData.Summary?>(null, lib) { value = SimilarData.compute(ctx.applicationContext, lib) }
     val c = MaterialTheme.colorScheme
     // Same threshold as the Large files page, so the card's count matches what the page lists.
+    val blurry by produceState<List<com.ankandebnath.allphotos.data.Media>?>(null, lib) { value = SimilarData.blurry(ctx.applicationContext, lib) }
     val big = remember(lib) { lib.items.filter { it.size >= 10L * 1024 * 1024 } }
     val wa = remember(lib) { lib.items.filter { it.chat == Chat.WHATSAPP } }
     val tg = remember(lib) { lib.items.filter { it.chat == Chat.TELEGRAM } }
@@ -110,6 +112,18 @@ fun CleanupTab(lib: Library, app: AppState, actions: Actions, state: LazyListSta
                     else -> "${sm.groups.size} sets · keep the best, free ${Fmt.size(sm.extraBytes)}"
                 },
             ) { app.open(Dest.Similar) }
+        }
+        item {
+            val bl = blurry
+            ToolCard(
+                Icons.Rounded.BlurOn, MaterialShapes.Sunny.toShape(), c.tertiaryContainer, c.onTertiaryContainer,
+                "Blurry photos",
+                when {
+                    bl == null -> "Looking…"
+                    bl.isEmpty() -> "None found"
+                    else -> "${bl.size} possibly blurry · ${Fmt.size(bl.sumOf { it.size })}"
+                },
+            ) { app.open(Dest.Group(SetKind.BLURRY, "Blurry photos")) }
         }
         item {
             ToolCard(

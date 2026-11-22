@@ -2,7 +2,7 @@
 
 A personal, fully offline gallery for Android, built for a Pixel 7 with Material 3 Expressive. It shows every photo and video on the phone. It has no ads, no account and no cloud, and it doesn't even have the internet permission. It replaces the default gallery, and Google Photos can keep running alongside it for backup.
 
-**Version:** 1.2.2 (versionCode 5) · **Android:** 15 or newer (minSdk 35, targetSdk 36, compileSdk 37)
+**Version:** 1.3.0 (versionCode 6) · **Android:** 15 or newer (minSdk 35, targetSdk 36, compileSdk 37)
 
 ---
 
@@ -10,6 +10,7 @@ A personal, fully offline gallery for Android, built for a Pixel 7 with Material
 
 ### Browsing
 - **Photos, Albums, Screenshots, Cleanup** tabs in a floating bottom bar, with Search and Settings at the top of every tab
+- **Folders in Photos** (Settings): leave folders such as WhatsApp or Telegram out of the Photos tab; they still show in Albums
 - Edge-to-edge grid with day/month headers, pinch to change columns (2–6) and a fast scroller
 - Optional **stacks** for bursts of similar photos
 - Plays nearly anything the phone can decode: JPEG, PNG, WebP, GIF, HEIC/HEIF, RAW (DNG), MP4, MOV and HDR video. HDR photos light up the screen in HDR mode.
@@ -18,7 +19,9 @@ A personal, fully offline gallery for Android, built for a Pixel 7 with Material
 ### Viewer
 - Photos grow out of the grid when opened and shrink back when closed (hero animation)
 - Swipe **down** to close, swipe **up** for details. Videos work the same way.
-- Top bar: date, album, screenshot source (app icon + website), HDR tag, ⭐ important, ⋮ menu (Details, Share/Save as JPG, Open website, Open with, Set as wallpaper)
+- Top bar: date, album, screenshot source (app icon + website), HDR tag, ⭐ important, ⋮ menu (Details, Share/Save as JPG, Share smaller, Open website, Open with, Set as wallpaper)
+- **Share smaller**: a ~3 MP JPG without the location, for chats (from the ⋮ menu or the selection bar)
+- **Undo** on every "Moved to trash" message
 - **Countdown pill** on screenshots and chat files that a clean-up rule will trash ("Moves to trash in 12 days · Keep")
 - **Text from photos:** tap *Text* to outline every line, then copy, share, call a number, open a link or write an email. Works offline.
 - Two-level **details**: the key facts first, then *Show more* (camera, lens, exposure, codec, bitrate, location and more)
@@ -31,6 +34,7 @@ A personal, fully offline gallery for Android, built for a Pixel 7 with Material
 
 ### Editing
 - Crop, rotate, flip
+- **Blur**: drag over a number, a name or a code to hide it under coarse squares before sharing
 - Filters inspired by the iPhone (Vivid, Vivid Warm/Cool, Dramatic, Mono, Silvertone, Noir, Film)
 - Adjustments: brightness, contrast, highlights, shadows, saturation, vibrance, warmth, tint, fade, vignette
 - Live GPU preview (AGSL shader). Export uses matching CPU code, so the saved file looks like the preview.
@@ -45,7 +49,8 @@ A personal, fully offline gallery for Android, built for a Pixel 7 with Material
 
 ### Cleanup
 - Storage overview by type and source
-- **Similar photos** (perceptual hash), keep the best and free the rest
+- **Similar photos** (perceptual hash), keep the best and free the rest. Look-alikes with different text are never ticked for you.
+- **Blurry photos**: shots that are probably blurry, from the sharpness scores the index already keeps. Nothing is ticked for you.
 - **Large files** (over 10 MB): tap a thumbnail to preview or play it, tap the row to select it
 - **Chat apps:** WhatsApp, Telegram, and Facebook & Messenger images and videos auto-trashed after N days, each with its own switch
 - **Trash** keeps files for 30 days, and a small "Moved to trash" message confirms each move

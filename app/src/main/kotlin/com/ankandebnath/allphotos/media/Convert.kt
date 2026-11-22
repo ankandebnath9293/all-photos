@@ -26,6 +26,22 @@ object Convert {
         }
     }
 
+    /** About 2048 × 1536: sharp on any phone screen, a fraction of the size of a camera photo. */
+    const val SMALL_PIXELS = 3_150_000L
+
+    /**
+     * A smaller JPG for sending in chats: about 3 MP, and without the place it was taken. The camera
+     * details and date stay. The original is not touched.
+     */
+    suspend fun shareableSmall(ctx: Context, m: Media): Uri? = withContext(Dispatchers.IO) {
+        val bmp = Images.decodeForEdit(ctx, m.uri, maxPixels = SMALL_PIXELS) ?: return@withContext null
+        val out = Saver.sharedFile(ctx, Saver.nameLike(m.name, "_small", "jpg"))
+        if (!Saver.compress(bmp, out, Bitmap.CompressFormat.JPEG, 85)) return@withContext null
+        bmp.recycle()
+        Saver.copyExif(ctx, m.uri, out, withLocation = false)
+        FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", out)
+    }
+
     /** A temporary JPG for sharing, so apps that do not understand HEIC still get the photo. */
     suspend fun shareableJpg(ctx: Context, m: Media): Uri? = withContext(Dispatchers.IO) {
         val bmp = Images.decodeForEdit(ctx, m.uri, maxPixels = 50_000_000L) ?: return@withContext null

@@ -246,14 +246,19 @@ fun AppIcon(img: ImageBitmap?, size: Dp, modifier: Modifier = Modifier) {
     else Box(modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest))
 }
 
-/** Short messages at the bottom of the screen ("Moved to trash"). No buttons, they just fade away. */
+/** Short messages at the bottom of the screen ("Moved to trash"), sometimes with one action (Undo). */
 object Toasts {
-    data class Msg(val text: String, val stamp: Long = System.nanoTime())
+    data class Msg(val text: String, val action: String? = null, val onAction: (() -> Unit)? = null, val stamp: Long = System.nanoTime())
 
     val current = MutableStateFlow<Msg?>(null)
 
     fun show(text: String) {
         current.value = Msg(text)
+    }
+
+    /** A message with a button; it stays a little longer so there is time to tap it. */
+    fun show(text: String, action: String, onAction: () -> Unit) {
+        current.value = Msg(text, action, onAction)
     }
 }
 
@@ -264,13 +269,13 @@ fun BoxScope.ToastHost(bottom: Dp) {
     LaunchedEffect(msg) {
         val m = msg ?: return@LaunchedEffect
         shown = m
-        delay(2200)
+        delay(if (m.action != null) 4500 else 2200)
         if (Toasts.current.value == m) Toasts.current.value = null
         shown = null
     }
     // The last message stays readable while the pill fades out.
-    var lastText by remember { mutableStateOf("") }
-    shown?.let { lastText = it.text }
+    var last by remember { mutableStateOf(Toasts.Msg("")) }
+    shown?.let { last = it }
     AnimatedVisibility(
         visible = shown != null,
         enter = fadeIn(tween(160)) + slideInVertically { it / 2 } + scaleIn(initialScale = 0.9f),
@@ -278,10 +283,26 @@ fun BoxScope.ToastHost(bottom: Dp) {
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottom),
     ) {
         Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.inverseSurface, shadowElevation = 6.dp) {
-            Text(
-                lastText, color = MaterialTheme.colorScheme.inverseOnSurface,
-                style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    last.text, color = MaterialTheme.colorScheme.inverseOnSurface,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 20.dp, end = if (last.action != null) 4.dp else 20.dp, top = 12.dp, bottom = 12.dp),
+                )
+                val action = last.action
+                if (action != null) {
+                    Text(
+                        action, color = MaterialTheme.colorScheme.inversePrimary,
+                        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).clickable(enabled = shown != null) {
+                            val m = last
+                            Toasts.current.value = null
+                            shown = null
+                            m.onAction?.invoke()
+                        }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                }
+            }
         }
     }
 }

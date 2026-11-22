@@ -13,6 +13,11 @@ import androidx.compose.material.icons.rounded.Animation
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CleaningServices
@@ -38,10 +43,15 @@ class Change(val icon: ImageVector, val title: String, val detail: String)
 
 /** What changed in each version. Shown once after an update. */
 object WhatsNew {
-    const val VERSION = 5
-    const val NAME = "1.2.2"
+    const val VERSION = 6
+    const val NAME = "1.3.0"
 
     val changes = listOf(
+        Change(Icons.Rounded.AutoFixHigh, "Hide things before sharing", "Edit → Blur: drag over a number, a name or a code and it's covered in squares. Tap a box to remove it."),
+        Change(Icons.Rounded.Share, "Share smaller", "From ⋮ or the selection bar: a smaller JPG without the location, made for chats. The original stays as it is."),
+        Change(Icons.Rounded.BlurOn, "Blurry photos", "A new card in Cleanup shows shots that are probably blurry. Nothing is picked for you."),
+        Change(Icons.Rounded.FolderOff, "Folders in Photos", "Settings → Folders in Photos: keep WhatsApp, Telegram or any folder out of the Photos tab. They still show in Albums."),
+        Change(Icons.AutoMirrored.Rounded.Undo, "Undo", "Every \"Moved to trash\" message has an Undo button for a few seconds."),
         Change(Icons.Rounded.PlayCircle, "Smoother videos", "Videos pause when you leave the app, the screen stays awake while one plays, rotating no longer closes the viewer, and trimming loops the part you picked."),
         Change(Icons.Rounded.AutoAwesome, "Safer Similar photos", "Photos are only grouped when they look alike to every photo in the set, and look-alikes with different text (slides, pages, receipts) are no longer ticked for you."),
         Change(Icons.Rounded.AutoDelete, "Clean-up fixes", "A file you restore from the trash stays restored, edited copies of screenshots and chat photos are saved to All Photos instead of being cleaned up, and \"Delete all\" on a notification keeps screenshots you starred."),

@@ -133,6 +133,7 @@ fun Editor(m: Media, onClose: () -> Unit) {
     var turns by remember { mutableIntStateOf(0) }
     var flip by remember { mutableStateOf(false) }
     var crop by remember { mutableStateOf(CropRect()) }
+    var blurs by remember { mutableStateOf(emptyList<CropRect>()) }
     var ratio by remember { mutableIntStateOf(0) }
     var adjust by remember { mutableStateOf(Look()) }
     var filter by remember { mutableIntStateOf(0) }
@@ -153,6 +154,11 @@ fun Editor(m: Media, onClose: () -> Unit) {
             else Bitmap.createBitmap(b, 0, 0, b.width, b.height, Export.orient(turns, flip), true).asImageBitmap()
         }
     }
+    // Hidden areas are baked into the preview, so every tab shows them as they will be saved.
+    val preview: ImageBitmap? = remember(shown, blurs) {
+        val s = shown
+        if (s == null || blurs.isEmpty()) s else Export.pixelate(s.asAndroidBitmap(), blurs).asImageBitmap()
+    }
     val small = remember(base) {
         base?.let { b ->
             val s = 160f / maxOf(b.width, b.height)
@@ -160,7 +166,7 @@ fun Editor(m: Media, onClose: () -> Unit) {
         }
     }
     val look = remember(adjust, filter) { Look.FILTERS[filter].second + adjust }
-    val edit = Edit(turns, flip, crop, look)
+    val edit = Edit(turns, flip, crop, look, blurs)
     val thumbPx = with(LocalDensity.current) { 72.dp.toPx() }
 
     fun applyRatio(i: Int, c: CropRect = crop): CropRect {
@@ -190,7 +196,7 @@ fun Editor(m: Media, onClose: () -> Unit) {
                 Text("Edit", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (!edit.isEmpty) {
                     TextButton(onClick = {
-                        turns = 0; flip = false; crop = CropRect(); ratio = 0; adjust = Look(); filter = 0
+                        turns = 0; flip = false; crop = CropRect(); ratio = 0; adjust = Look(); filter = 0; blurs = emptyList()
                     }) { Text("Reset") }
                 }
                 Box {
@@ -223,10 +229,11 @@ fun Editor(m: Media, onClose: () -> Unit) {
             }
 
             Box(Modifier.weight(1f).fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
-                val img = shown
+                val img = preview
                 when {
                     failed -> Text("This photo can't be edited", color = Color.White)
                     img == null -> LoadingIndicator()
+                    tab == 3 -> BlurArea(img, look, crop, blurs, onAdd = { blurs = blurs + it }, onRemove = { i -> blurs = blurs.filterIndexed { j, _ -> j != i } })
                     else -> CropArea(img, look, crop, cropping = tab == 0, ratio = ratios[ratio].value.let { r ->
                         if (r < 0f) img.width.toFloat() / img.height else r
                     }) { crop = it }
@@ -242,9 +249,13 @@ fun Editor(m: Media, onClose: () -> Unit) {
                             }
                         }
                         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.Center) {
-                            IconButton(onClick = { turns = (turns + 3) % 4; crop = CropRect(); ratio = 0 }) { Icon(Icons.Rounded.RotateLeft, "Rotate left", tint = Color.White) }
-                            IconButton(onClick = { turns = (turns + 1) % 4; crop = CropRect(); ratio = 0 }) { Icon(Icons.Rounded.RotateRight, "Rotate right", tint = Color.White) }
-                            IconButton(onClick = { flip = !flip; crop = CropRect(1f - crop.r, crop.t, 1f - crop.l, crop.b) }) { Icon(Icons.Rounded.Flip, "Mirror", tint = Color.White) }
+                            IconButton(onClick = { turns = (turns + 3) % 4; crop = CropRect(); ratio = 0; blurs = emptyList() }) { Icon(Icons.Rounded.RotateLeft, "Rotate left", tint = Color.White) }
+                            IconButton(onClick = { turns = (turns + 1) % 4; crop = CropRect(); ratio = 0; blurs = emptyList() }) { Icon(Icons.Rounded.RotateRight, "Rotate right", tint = Color.White) }
+                            IconButton(onClick = {
+                                flip = !flip
+                                crop = CropRect(1f - crop.r, crop.t, 1f - crop.l, crop.b)
+                                blurs = blurs.map { CropRect(1f - it.r, it.t, 1f - it.l, it.b) }
+                            }) { Icon(Icons.Rounded.Flip, "Mirror", tint = Color.White) }
                         }
                     }
                     1 -> {
@@ -263,6 +274,15 @@ fun Editor(m: Media, onClose: () -> Unit) {
                             valueRange = slide.min..1f,
                             modifier = Modifier.padding(horizontal = 24.dp),
                         )
+                    }
+                    3 -> {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (blurs.isEmpty()) "Drag over anything you want to hide" else "Drag to hide more · tap a box to remove it",
+                                color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                            )
+                            if (blurs.isNotEmpty()) TextButton(onClick = { blurs = blurs.dropLast(1) }) { Text("Undo") }
+                        }
                     }
                     else -> {
                         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -287,8 +307,94 @@ fun Editor(m: Media, onClose: () -> Unit) {
                 }
                 Gap(8.dp)
                 Box(Modifier.padding(horizontal = 16.dp)) {
-                    Segmented(listOf("Crop", "Adjust", "Filters"), tab) { tab = it }
+                    Segmented(listOf("Crop", "Adjust", "Filters", "Blur"), tab) { tab = it }
                 }
+            }
+        }
+    }
+}
+
+/** The part of [img] inside [crop]. */
+private fun croppedPart(img: ImageBitmap, crop: CropRect): ImageBitmap {
+    if (crop.isFull) return img
+    val src = img.asAndroidBitmap()
+    val x = (crop.l * src.width).roundToInt().coerceIn(0, src.width - 1)
+    val y = (crop.t * src.height).roundToInt().coerceIn(0, src.height - 1)
+    val w = (crop.w * src.width).roundToInt().coerceIn(1, src.width - x)
+    val h = (crop.h * src.height).roundToInt().coerceIn(1, src.height - y)
+    return Bitmap.createBitmap(src, x, y, w, h).asImageBitmap()
+}
+
+/**
+ * Hide parts of the photo: drag a box over a phone number, a name or a code and it is covered in
+ * coarse squares. Tap a box to remove it. Boxes are kept in the same 0..1 space as the crop.
+ */
+@Composable
+private fun BlurArea(img: ImageBitmap, look: Look, crop: CropRect, blurs: List<CropRect>, onAdd: (CropRect) -> Unit, onRemove: (Int) -> Unit) {
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val bw = constraints.maxWidth.toFloat()
+        val bh = constraints.maxHeight.toFloat()
+        val part = remember(img, crop) { croppedPart(img, crop) }
+        val ca = part.width.toFloat() / part.height
+        val dw = if (bw / bh > ca) bh * ca else bw
+        val dh = if (bw / bh > ca) bh else bw / ca
+        val left = (bw - dw) / 2f
+        val top = (bh - dh) / 2f
+        val fx = remember(look, dw, dh) { LookRender.effect(look, dw, dh) }
+        Image(
+            part, null,
+            Modifier.size(with(density) { dw.toDp() }, with(density) { dh.toDp() }).graphicsLayer { renderEffect = fx },
+            contentScale = ContentScale.FillBounds,
+        )
+        val current = androidx.compose.runtime.rememberUpdatedState(blurs)
+        var drawing by remember { mutableStateOf<Pair<Offset, Offset>?>(null) }
+        // Screen point to the photo's 0..1 space, and back.
+        fun toPhoto(p: Offset) = Offset(
+            crop.l + ((p.x - left) / dw).coerceIn(0f, 1f) * crop.w,
+            crop.t + ((p.y - top) / dh).coerceIn(0f, 1f) * crop.h,
+        )
+        fun toScreen(x: Float, y: Float) = Offset(left + (x - crop.l) / crop.w * dw, top + (y - crop.t) / crop.h * dh)
+        Canvas(
+            Modifier.fillMaxSize()
+                .pointerInput(crop, dw, dh) {
+                    androidx.compose.foundation.gestures.detectTapGestures { p ->
+                        val f = toPhoto(p)
+                        val i = current.value.indexOfLast { f.x in it.l..it.r && f.y in it.t..it.b }
+                        if (i >= 0) onRemove(i)
+                    }
+                }
+                .pointerInput(crop, dw, dh) {
+                    detectDragGestures(
+                        onDragStart = { p -> drawing = p to p },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            drawing = drawing?.let { it.first to change.position }
+                        },
+                        onDragEnd = {
+                            val d = drawing
+                            drawing = null
+                            if (d != null) {
+                                val a = toPhoto(d.first)
+                                val b = toPhoto(d.second)
+                                val r = CropRect(minOf(a.x, b.x), minOf(a.y, b.y), maxOf(a.x, b.x), maxOf(a.y, b.y))
+                                if (r.w > 0.01f && r.h > 0.005f) onAdd(r)
+                            }
+                        },
+                        onDragCancel = { drawing = null },
+                    )
+                },
+        ) {
+            for (r in blurs) {
+                val a = toScreen(r.l, r.t)
+                val b = toScreen(r.r, r.b)
+                drawRect(Color.White.copy(alpha = 0.75f), a, Size(b.x - a.x, b.y - a.y), style = Stroke(1.5.dp.toPx()))
+            }
+            drawing?.let { (s, e) ->
+                val o = Offset(minOf(s.x, e.x), minOf(s.y, e.y))
+                val sz = Size(abs(e.x - s.x), abs(e.y - s.y))
+                drawRect(Color.White.copy(alpha = 0.22f), o, sz)
+                drawRect(Color.White, o, sz, style = Stroke(2.dp.toPx()))
             }
         }
     }

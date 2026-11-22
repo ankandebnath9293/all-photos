@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +117,7 @@ fun SettingsScreen(app: AppState, bottom: Dp, onBack: () -> Unit) {
     val index by Indexer.progress.collectAsState()
     val lib by MediaRepo.library.collectAsState()
     var whatsNew by remember { mutableStateOf(false) }
+    var folders by remember { mutableStateOf(false) }
     val counts = remember(lib, index.running) { Db.get(ctx).counts() }
     val photos = lib?.items?.count { !it.isVideo } ?: 0
     val notif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -164,6 +167,21 @@ fun SettingsScreen(app: AppState, bottom: Dp, onBack: () -> Unit) {
                 }
                 SwitchRow("Show dates in grid", "Day headings between photos; month headings when zoomed out", s.showDates) { on ->
                     prefs.update { it.copy(showDates = on) }
+                }
+                Row(
+                    Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).clickable { folders = true }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Folders in Photos", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (s.photosHidden.isEmpty()) "Every folder shows in the Photos tab"
+                            else "${s.photosHidden.size} folder${if (s.photosHidden.size == 1) "" else "s"} hidden from Photos (still in Albums)",
+                            style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant,
+                        )
+                    }
+                    androidx.compose.material3.Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = c.onSurfaceVariant)
                 }
                 Gap(8.dp)
                 Text("Animations", style = MaterialTheme.typography.titleMedium)
@@ -276,6 +294,9 @@ fun SettingsScreen(app: AppState, bottom: Dp, onBack: () -> Unit) {
         }
     }
     if (whatsNew) WhatsNewDialog { whatsNew = false }
+    if (folders) {
+        FoldersDialog(lib, s.photosHidden, onChange = { h -> prefs.update { it.copy(photosHidden = h) } }) { folders = false }
+    }
 }
 
 @Composable
@@ -295,3 +316,41 @@ fun GrantRow(title: String, sub: String, granted: Boolean, onFix: () -> Unit) {
         }
     }
 }
+
+/** Which folders appear in the Photos tab. Switched-off ones still show everywhere else. */
+@Composable
+private fun FoldersDialog(lib: com.ankandebnath.allphotos.data.Library?, hidden: Set<Long>, onChange: (Set<Long>) -> Unit, onDismiss: () -> Unit) {
+    val albums = remember(lib) { lib?.let { MediaRepo.albums(it, emptySet()) }.orEmpty() }
+    val c = MaterialTheme.colorScheme
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Folders in Photos") },
+        text = {
+            Column {
+                Text("Switched-off folders still show in Albums, search and clean-up.", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                Gap(8.dp)
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(albums.size, key = { albums[it].id }) { i ->
+                        val a = albums[i]
+                        val on = a.id !in hidden
+                        Row(
+                            Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                .clickable { onChange(if (on) hidden + a.id else hidden - a.id) }.padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Thumb(a.cover, 96, Modifier.size(40.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)))
+                            GapW(12.dp)
+                            Column(Modifier.weight(1f)) {
+                                Text(a.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Text("${a.count}", style = MaterialTheme.typography.bodySmall, color = c.onSurfaceVariant)
+                            }
+                            androidx.compose.material3.Checkbox(checked = on, onCheckedChange = null)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+

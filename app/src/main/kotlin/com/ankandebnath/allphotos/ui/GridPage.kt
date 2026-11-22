@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Done
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.PhotoSizeSelectSmall
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -239,6 +240,7 @@ fun GridPage(
             SelectMode.PICK -> listOf(DockAction(Icons.Rounded.Done, "Done") { onPick?.invoke(picked) })
             SelectMode.NORMAL -> buildList {
                 add(DockAction(Icons.Rounded.Share, "Share") { actions.share(picked) })
+                if (picked.any { !it.isVideo }) add(DockAction(Icons.Rounded.PhotoSizeSelectSmall, "Share small") { actions.shareSmall(picked) })
                 val allImportant = picked.isNotEmpty() && picked.all { it.id in important }
                 add(
                     DockAction(if (allImportant) Icons.Rounded.StarOutline else Icons.Rounded.Star, if (allImportant) "Unmark" else "Important") {

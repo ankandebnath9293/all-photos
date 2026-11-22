@@ -15,9 +15,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** An edit to apply: quarter turns, mirror, crop, and the colour look (filter plus sliders). */
-data class Edit(val turns: Int, val flip: Boolean, val crop: CropRect, val look: Look) {
-    val isEmpty get() = turns % 4 == 0 && !flip && crop.isFull && look.isNeutral
+/**
+ * An edit to apply: quarter turns, mirror, hidden areas ([blurs], 0..1 in the turned photo, the same
+ * space as [crop]), crop, and the colour look (filter plus sliders).
+ */
+data class Edit(val turns: Int, val flip: Boolean, val crop: CropRect, val look: Look, val blurs: List<CropRect> = emptyList()) {
+    val isEmpty get() = turns % 4 == 0 && !flip && crop.isFull && look.isNeutral && blurs.isEmpty()
 }
 
 /** Bakes edits into a full-quality photo and saves it. */
@@ -28,12 +31,41 @@ object Export {
         postRotate(90f * (turns % 4))
     }
 
+    /**
+     * Hides parts of a picture under coarse squares. [rects] are 0..1 in the picture. The square size
+     * follows the picture's size, so the small preview and the saved photo look the same.
+     */
+    fun pixelate(src: Bitmap, rects: List<CropRect>): Bitmap {
+        if (rects.isEmpty()) return src
+        val out = src.copy(Bitmap.Config.ARGB_8888, true) ?: return src
+        val canvas = Canvas(out)
+        val block = (maxOf(src.width, src.height) / 48f).coerceAtLeast(6f)
+        val paint = Paint().apply { isFilterBitmap = false }
+        for (r in rects) {
+            val x = (r.l * src.width).roundToInt().coerceIn(0, src.width - 1)
+            val y = (r.t * src.height).roundToInt().coerceIn(0, src.height - 1)
+            val w = ((r.r - r.l) * src.width).roundToInt().coerceIn(1, src.width - x)
+            val h = ((r.b - r.t) * src.height).roundToInt().coerceIn(1, src.height - y)
+            val part = Bitmap.createBitmap(out, x, y, w, h)
+            val tiny = Bitmap.createScaledBitmap(part, (w / block).roundToInt().coerceAtLeast(1), (h / block).roundToInt().coerceAtLeast(1), true)
+            canvas.drawBitmap(tiny, null, android.graphics.Rect(x, y, x + w, y + h), paint)
+            if (tiny !== part) tiny.recycle()
+            if (part !== out) part.recycle()
+        }
+        return out
+    }
+
     suspend fun apply(src: Bitmap, e: Edit): Bitmap {
         var b = src
         if (e.turns % 4 != 0 || e.flip) {
             val r = Bitmap.createBitmap(b, 0, 0, b.width, b.height, orient(e.turns, e.flip), true)
             if (r !== b && b !== src) b.recycle()
             b = r
+        }
+        if (e.blurs.isNotEmpty()) {
+            val p = pixelate(b, e.blurs)
+            if (p !== b && b !== src) b.recycle()
+            b = p
         }
         if (!e.crop.isFull) {
             val x = (e.crop.l * b.width).roundToInt().coerceIn(0, b.width - 1)

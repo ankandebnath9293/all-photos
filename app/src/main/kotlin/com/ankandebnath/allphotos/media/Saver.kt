@@ -101,12 +101,20 @@ object Saver {
         ExifInterface.TAG_GPS_LONGITUDE_REF, ExifInterface.TAG_GPS_ALTITUDE, ExifInterface.TAG_GPS_ALTITUDE_REF,
     )
 
-    /** Copies camera details from the original photo to a new JPEG file. */
-    fun copyExif(ctx: Context, from: Uri, toJpeg: File) {
+    private val locationTags = setOf(
+        ExifInterface.TAG_GPS_LATITUDE, ExifInterface.TAG_GPS_LATITUDE_REF, ExifInterface.TAG_GPS_LONGITUDE,
+        ExifInterface.TAG_GPS_LONGITUDE_REF, ExifInterface.TAG_GPS_ALTITUDE, ExifInterface.TAG_GPS_ALTITUDE_REF,
+    )
+
+    /** Copies camera details from the original photo to a new JPEG file, with or without where it was taken. */
+    fun copyExif(ctx: Context, from: Uri, toJpeg: File, withLocation: Boolean = true) {
         runCatching {
             val src = ctx.contentResolver.openInputStream(from)?.use { ExifInterface(it) } ?: return
             val dst = ExifInterface(toJpeg.absolutePath)
-            for (tag in keepTags) src.getAttribute(tag)?.let { dst.setAttribute(tag, it) }
+            for (tag in keepTags) {
+                if (!withLocation && tag in locationTags) continue
+                src.getAttribute(tag)?.let { dst.setAttribute(tag, it) }
+            }
             dst.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
             dst.setAttribute(ExifInterface.TAG_SOFTWARE, "All Photos")
             dst.saveAttributes()

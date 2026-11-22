@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.RestoreFromTrash
+import androidx.compose.material.icons.rounded.PhotoSizeSelectSmall
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -671,6 +672,11 @@ private fun ViewerMenu(open: Boolean, m: Media, url: String?, actions: Actions, 
         }
         DropdownMenuItem(text = { Text("Open with…") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) }, onClick = { onDismiss(); runCatching { Share.openWith(ctx, m) } })
         if (!m.isVideo) {
+            DropdownMenuItem(
+                text = { Column { Text("Share smaller"); Text("Smaller JPG, no location", style = MaterialTheme.typography.bodySmall) } },
+                leadingIcon = { Icon(Icons.Rounded.PhotoSizeSelectSmall, null) },
+                onClick = { onDismiss(); actions.shareSmall(listOf(m)) },
+            )
             DropdownMenuItem(text = { Text("Set as wallpaper") }, leadingIcon = { Icon(Icons.Rounded.Wallpaper, null) }, onClick = { onDismiss(); Share.setAs(ctx, m) })
         }
     }

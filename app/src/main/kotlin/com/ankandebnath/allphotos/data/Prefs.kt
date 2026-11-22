@@ -29,6 +29,8 @@ data class Settings(
     val showDates: Boolean = true,
     /** 0 minimal, 1 standard, 2 rich. */
     val motion: Int = 1,
+    /** Folders (bucket ids) left out of the Photos tab. They still show in Albums, search and clean-up. */
+    val photosHidden: Set<Long> = emptySet(),
 )
 
 class Prefs private constructor(private val ctx: Context) {
@@ -55,6 +57,7 @@ class Prefs private constructor(private val ctx: Context) {
         stackSimilar = sp.getBoolean("stackSimilar", false),
         showDates = sp.getBoolean("showDates", true),
         motion = sp.getInt("motion", 1).coerceIn(0, 2),
+        photosHidden = sp.getStringSet("photosHidden", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet(),
     )
 
     @Synchronized
@@ -78,6 +81,7 @@ class Prefs private constructor(private val ctx: Context) {
             putBoolean("stackSimilar", s.stackSimilar)
             putBoolean("showDates", s.showDates)
             putInt("motion", s.motion)
+            putStringSet("photosHidden", s.photosHidden.map { it.toString() }.toSet())
         }
         state.value = s
     }

@@ -221,6 +221,8 @@ fun groupItems(ctx: android.content.Context, lib: Library, kind: SetKind, key: S
             lib.items.filter { docs[it.id] == k }
         }
         SetKind.RECENT -> lib.items.sortedByDescending { it.added }.take(300)
+        // Read from the index in the background; see GroupPage.
+        SetKind.BLURRY -> emptyList()
     }
 }
 
@@ -229,13 +231,19 @@ fun GroupPage(d: Dest.Group, lib: Library, app: AppState, actions: Actions, bott
     val ctx = LocalContext.current
     val important by remember { Db.get(ctx).important }.collectAsState()
     val sources by remember { Db.get(ctx).sources }.collectAsState()
-    val items = remember(lib, d, important, sources) { groupItems(ctx, lib, d.kind, d.key) }
+    val plain = remember(lib, d, important, sources) { groupItems(ctx, lib, d.kind, d.key) }
+    val blurry by androidx.compose.runtime.produceState<List<Media>?>(null, lib, d) {
+        value = if (d.kind == SetKind.BLURRY) com.ankandebnath.allphotos.work.SimilarData.blurry(ctx.applicationContext, lib) else null
+    }
+    val items = if (d.kind == SetKind.BLURRY) blurry.orEmpty() else plain
     val shots = d.kind == SetKind.SHOT_APP || d.kind == SetKind.SHOT_SITE || d.kind == SetKind.SCREENSHOTS
     val badge: (@Composable BoxScope.(Media) -> Unit)? = if (shots) { { m -> ExpiryBadge(m) } } else null
     GridPage(
         items = items,
         title = d.title,
-        sub = countLabel(items) + if (items.isNotEmpty()) " · ${Fmt.size(items.sumOf { it.size })}" else "",
+        sub = if (d.kind == SetKind.BLURRY) {
+            if (blurry == null) "Looking…" else "${countLabel(items)} · select the ones you don't need"
+        } else countLabel(items) + if (items.isNotEmpty()) " · ${Fmt.size(items.sumOf { it.size })}" else "",
         app = app,
         actions = actions,
         bottom = bottom,
